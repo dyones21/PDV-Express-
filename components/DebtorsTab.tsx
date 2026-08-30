@@ -105,10 +105,10 @@ export function DebtorsTab({ customers, sales }: DebtorsTabProps) {
   };
 
   const handleWhatsAppCobrar = (customer: Customer) => {
-    const text = `🧀 *Queijaria - Lembrete de Pagamento*\n\n` +
+    const text = `📋 *Lembrete de Pagamento*\n\n` +
       `Olá, *${customer.name}*! Tudo bem?\n` +
       `Estou passando na rota hoje e conferindo os acertos pendentes.\n` +
-      `Consta em aberto o valor de *${formatCurrency(customer.totalDebt)}* das compras de queijo.\n\n` +
+      `Consta em aberto o valor de *${formatCurrency(customer.totalDebt)}* de compras anteriores.\n\n` +
       `Podemos combinar o acerto hoje? Agradeço muito! 🙏`;
 
     const phone = customer.phone ? customer.phone.replace(/\D/g, '') : '';

@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Controle de Vendas de Queijo',
-  description: 'App PWA offline-first para controle de vendas porta a porta, fiado e recebimentos de queijos.',
+  title: 'PDV Express - Controle de Vendas & Fiado',
+  description: 'App PWA offline-first para controle de vendas, estoque, clientes e fiado para autônomos e MEI.',
   manifest: '/manifest.json',
   icons: {
     icon: '/icon.svg',
@@ -12,17 +12,17 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Vendas Queijo',
+    title: 'PDV Express',
   },
   openGraph: {
-    title: 'Controle de Vendas de Queijo',
-    description: 'App PWA offline-first para controle de vendas porta a porta, fiado e recebimentos de queijos.',
+    title: 'PDV Express - Controle de Vendas & Fiado',
+    description: 'App PWA offline-first para controle de vendas, estoque, clientes e fiado para autônomos e MEI.',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Controle de Vendas de Queijo',
-    description: 'App PWA offline-first para controle de vendas porta a porta, fiado e recebimentos de queijos.',
+    title: 'PDV Express - Controle de Vendas & Fiado',
+    description: 'App PWA offline-first para controle de vendas, estoque, clientes e fiado para autônomos e MEI.',
   },
 };
 

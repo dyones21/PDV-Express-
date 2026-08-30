@@ -1,9 +1,8 @@
-const CACHE_NAME = 'queijo-vendas-v1';
+const CACHE_NAME = 'pdv-express-v2';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
   '/icon.svg',
-  '/globals.css'
 ];
 
 self.addEventListener('install', (event) => {
@@ -33,19 +32,45 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Let Firebase firestore network calls handle their own offline persistence
+  const url = event.request.url;
+
+  // Never intercept Firebase, APIs, or Next.js internal/dev assets
   if (
-    event.request.url.includes('firestore.googleapis.com') ||
-    event.request.url.includes('identitytoolkit.googleapis.com') ||
-    event.request.url.includes('/api/')
+    url.includes('firestore.googleapis.com') ||
+    url.includes('identitytoolkit.googleapis.com') ||
+    url.includes('/api/') ||
+    url.includes('/_next/webpack-hmr') ||
+    url.includes('__nextjs') ||
+    event.request.method !== 'GET'
   ) {
     return;
   }
 
+  // Handle navigation requests (HTML pages)
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseClone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseClone);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          return caches.match('/').then((cached) => cached || fetch(event.request));
+        })
+    );
+    return;
+  }
+
+  // Handle static assets
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Fetch in background to update cache
+        // Fetch update in background for next time
         fetch(event.request)
           .then((networkResponse) => {
             if (networkResponse && networkResponse.status === 200) {
@@ -60,24 +85,15 @@ self.addEventListener('fetch', (event) => {
 
       return fetch(event.request)
         .then((networkResponse) => {
-          if (
-            networkResponse &&
-            networkResponse.status === 200 &&
-            event.request.method === 'GET'
-          ) {
+          if (networkResponse && networkResponse.status === 200) {
             const responseClone = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => {
               cache.put(event.request, responseClone);
             });
           }
           return networkResponse;
-        })
-        .catch(() => {
-          // If offline and request is for a navigation HTML page, return index cache
-          if (event.request.mode === 'navigate') {
-            return caches.match('/');
-          }
         });
     })
   );
 });
+

@@ -3,7 +3,7 @@
 import React from 'react';
 import { Sale } from '@/types';
 import { formatCurrency, formatDateBr, formatDateTimeBr } from '@/lib/format';
-import { X, CheckCircle2, Clock, Share2, MapPin, User, Calendar, Tag, ShieldCheck } from 'lucide-react';
+import { X, CheckCircle2, Clock, Share2, MapPin, User, Calendar, Tag, ShieldCheck, ShoppingBag } from 'lucide-react';
 
 interface SaleDetailsModalProps {
   sale: Sale | null;
@@ -14,7 +14,7 @@ export function SaleDetailsModal({ sale, onClose }: SaleDetailsModalProps) {
   if (!sale) return null;
 
   const handleShareWhatsApp = () => {
-    const text = `🧀 *Recibo de Compra - Queijaria*\n\n` +
+    const text = `📦 *Comprovante de Compra*\n\n` +
       `Olá, *${sale.customerName}*!\n` +
       `Data da compra: ${formatDateBr(sale.saleDate)}\n\n` +
       `*Itens:* \n` +
@@ -26,7 +26,7 @@ export function SaleDetailsModal({ sale, onClose }: SaleDetailsModalProps) {
         ? `⏳ *Status:* Pago ${formatCurrency(sale.paidAmount)} | Restante a receber: ${formatCurrency(sale.remainingAmount)}`
         : `⏳ *Status:* Fiado (A receber): ${formatCurrency(sale.remainingAmount)}`) +
       `\n\nVendedor: ${sale.sellerName}\n` +
-      `\n_Obrigado pela preferência e bom apetite!_`;
+      `\n_Agradecemos a preferência!_`;
 
     const phone = sale.customerPhone ? sale.customerPhone.replace(/\D/g, '') : '';
     const url = phone
@@ -41,7 +41,7 @@ export function SaleDetailsModal({ sale, onClose }: SaleDetailsModalProps) {
         {/* Header */}
         <div className="bg-amber-700 px-4 py-3 text-white flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-lg">🧀</span>
+            <ShoppingBag className="w-5 h-5 text-amber-200" />
             <div>
               <h3 className="font-bold text-sm">Detalhes da Venda</h3>
               <div className="text-[10px] text-amber-200">{formatDateTimeBr(sale.createdAt || sale.saleDate)}</div>
@@ -77,7 +77,7 @@ export function SaleDetailsModal({ sale, onClose }: SaleDetailsModalProps) {
           {/* Items List */}
           <div>
             <div className="text-[10px] uppercase font-bold text-neutral-500 tracking-wider mb-1.5">
-              Queijos & Produtos
+              Produtos
             </div>
             <div className="divide-y divide-neutral-100 border border-neutral-200 rounded-xl overflow-hidden bg-white">
               {sale.items.map((item, idx) => (
@@ -99,7 +99,7 @@ export function SaleDetailsModal({ sale, onClose }: SaleDetailsModalProps) {
           {/* Totals & Status */}
           <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200 space-y-1.5">
             <div className="flex justify-between font-medium text-neutral-700">
-              <span>Valor Total dos Queijos:</span>
+              <span>Valor Total dos Produtos:</span>
               <span className="font-bold text-neutral-900">{formatCurrency(sale.totalAmount)}</span>
             </div>
 

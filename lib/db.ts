@@ -19,6 +19,26 @@ import { hashPin, generateSalt } from './security';
 
 export { DEFAULT_BUSINESS_ID };
 
+/**
+ * Strips all undefined values recursively to ensure Firestore never throws undefined errors
+ */
+export function cleanUndefined<T extends Record<string, any>>(obj: T): T {
+  const result: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+        result[key] = cleanUndefined(value);
+      } else if (Array.isArray(value)) {
+        result[key] = value.map((item) =>
+          item !== null && typeof item === 'object' ? cleanUndefined(item) : item
+        );
+      } else {
+        result[key] = value;
+      }
+    }
+  }
+  return result as T;
+}
 
 // Helpers to get sub-collections for a specific business
 export function getBusinessRef(businessId = DEFAULT_BUSINESS_ID) {
@@ -54,12 +74,11 @@ export async function ensureDefaultBusinessData(businessId = DEFAULT_BUSINESS_ID
 
     if (!bSnap.exists()) {
       // Create business doc
-      await setDoc(bRef, {
+      await setDoc(bRef, cleanUndefined({
         id: businessId,
-        name: 'Queijaria do Sertão (MEI)',
-        ownerEmail: 'dyones21@gmail.com',
+        name: 'Meu Negócio',
         createdAt: new Date().toISOString(),
-      });
+      }));
     }
 
     // Check sellers
@@ -69,44 +88,39 @@ export async function ensureDefaultBusinessData(businessId = DEFAULT_BUSINESS_ID
       const salt1 = generateSalt();
       const hash1 = await hashPin('1234', salt1);
       const seller1Ref = doc(getSellersCol(businessId), 'vendedor-principal');
-      await setDoc(seller1Ref, {
+      await setDoc(seller1Ref, cleanUndefined({
         name: 'João (Vendedor)',
         role: 'owner',
         pinHash: hash1,
         pinSalt: salt1,
         active: true,
         createdAt: new Date().toISOString(),
-      });
+      }));
 
       // Default seller 2: "Ajudante" (PIN: 5678)
       const salt2 = generateSalt();
       const hash2 = await hashPin('5678', salt2);
       const seller2Ref = doc(getSellersCol(businessId), 'ajudante-rota');
-      await setDoc(seller2Ref, {
+      await setDoc(seller2Ref, cleanUndefined({
         name: 'Lucas (Ajudante)',
         role: 'seller',
         pinHash: hash2,
         pinSalt: salt2,
         active: true,
         createdAt: new Date().toISOString(),
-      });
+      }));
     }
 
     // Check products
     const prodSnap = await getDocs(getProductsCol(businessId));
     if (prodSnap.empty) {
       const defaultProducts: Array<Omit<Product, 'id'>> = [
-        { name: 'Queijo Minas Meia Cura', price: 38.0, costPrice: 22.0, stockQuantity: 20, unit: 'peça', active: true, category: 'Queijos Tradicionais', sortOrder: 1 },
-        { name: 'Queijo Canastra Artesanal', price: 45.0, costPrice: 28.0, stockQuantity: 15, unit: 'peça', active: true, category: 'Queijos Especiais', sortOrder: 2 },
-        { name: 'Queijo Provolone Defumado', price: 40.0, costPrice: 24.0, stockQuantity: 12, unit: 'peça', active: true, category: 'Defumados', sortOrder: 3 },
-        { name: 'Queijo Parmesão Curado', price: 48.0, costPrice: 30.0, stockQuantity: 10, unit: 'peça', active: true, category: 'Curados', sortOrder: 4 },
-        { name: 'Requeijão de Corte Moreno', price: 32.0, costPrice: 19.0, stockQuantity: 14, unit: 'barra', active: true, category: 'Requeijões', sortOrder: 5 },
-        { name: 'Queijo Coalho Espeto', price: 30.0, costPrice: 17.0, stockQuantity: 18, unit: 'pacote', active: true, category: 'Especiais', sortOrder: 6 },
-        { name: 'Goiabada Cascão Caseira', price: 18.0, costPrice: 9.5, stockQuantity: 25, unit: 'barra', active: true, category: 'Doces', sortOrder: 7 },
+        { name: 'Produto Exemplo 1', price: 35.0, costPrice: 20.0, stockQuantity: 20, unit: 'un', active: true, category: 'Geral', sortOrder: 1 },
+        { name: 'Produto Exemplo 2', price: 45.0, costPrice: 28.0, stockQuantity: 15, unit: 'un', active: true, category: 'Geral', sortOrder: 2 },
       ];
 
       for (const p of defaultProducts) {
-        await addDoc(getProductsCol(businessId), p);
+        await addDoc(getProductsCol(businessId), cleanUndefined(p));
       }
     }
 
@@ -119,8 +133,8 @@ export async function ensureDefaultBusinessData(businessId = DEFAULT_BUSINESS_ID
           phone: '(11) 98765-4321',
           address: 'Rua das Flores, 142',
           referencePoint: 'Em frente ao mercadinho do Zé',
-          totalDebt: 38.0,
-          totalPurchased: 114.0,
+          totalDebt: 35.0,
+          totalPurchased: 105.0,
           lastPurchaseDate: new Date(Date.now() - 3 * 86400000).toISOString().split('T')[0],
           createdAt: new Date().toISOString(),
         },
@@ -147,10 +161,10 @@ export async function ensureDefaultBusinessData(businessId = DEFAULT_BUSINESS_ID
       ];
 
       for (const c of sampleCustomers) {
-        const cRef = await addDoc(getCustomersCol(businessId), c);
+        const cRef = await addDoc(getCustomersCol(businessId), cleanUndefined(c));
         // Create initial pending sample sale if debt > 0
         if (c.totalDebt > 0) {
-          await addDoc(getSalesCol(businessId), {
+          await addDoc(getSalesCol(businessId), cleanUndefined({
             customerId: cRef.id,
             customerName: c.name,
             customerPhone: c.phone,
@@ -161,11 +175,11 @@ export async function ensureDefaultBusinessData(businessId = DEFAULT_BUSINESS_ID
             items: [
               {
                 productId: 'sample',
-                productName: 'Queijo Minas Meia Cura',
+                productName: 'Produto Exemplo 1',
                 quantity: 1,
                 unitPrice: c.totalDebt,
                 subtotal: c.totalDebt,
-                unit: 'peça',
+                unit: 'un',
               },
             ],
             totalAmount: c.totalDebt,
@@ -176,7 +190,7 @@ export async function ensureDefaultBusinessData(businessId = DEFAULT_BUSINESS_ID
             notes: 'Ficou para acertar na próxima passada de sexta-feira',
             saleDate: c.lastPurchaseDate,
             createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
-          });
+          }));
         }
       }
     }
@@ -211,13 +225,13 @@ export async function addCustomer(
   customerData: Omit<Customer, 'id' | 'createdAt' | 'totalDebt' | 'totalPurchased'>
 ): Promise<string> {
   await ensureAuthSession();
-  const docRef = await addDoc(getCustomersCol(businessId), {
+  const docRef = await addDoc(getCustomersCol(businessId), cleanUndefined({
     ...customerData,
     totalDebt: 0,
     totalPurchased: 0,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-  });
+  }));
   return docRef.id;
 }
 
@@ -228,10 +242,10 @@ export async function updateCustomer(
 ): Promise<void> {
   await ensureAuthSession();
   const docRef = doc(getCustomersCol(businessId), customerId);
-  await updateDoc(docRef, {
+  await updateDoc(docRef, cleanUndefined({
     ...updates,
     updatedAt: new Date().toISOString(),
-  });
+  }));
 }
 
 // ----------------- PRODUCTS -----------------
@@ -260,7 +274,7 @@ export async function addProduct(
   productData: Omit<Product, 'id'>
 ): Promise<string> {
   await ensureAuthSession();
-  const docRef = await addDoc(getProductsCol(businessId), productData);
+  const docRef = await addDoc(getProductsCol(businessId), cleanUndefined(productData));
   return docRef.id;
 }
 
@@ -271,7 +285,7 @@ export async function updateProduct(
 ): Promise<void> {
   await ensureAuthSession();
   const docRef = doc(getProductsCol(businessId), productId);
-  await updateDoc(docRef, updates);
+  await updateDoc(docRef, cleanUndefined(updates));
 }
 
 export async function restockProduct(
@@ -292,7 +306,7 @@ export async function restockProduct(
     if (newCostPrice !== undefined && newCostPrice > 0) {
       updates.costPrice = newCostPrice;
     }
-    await updateDoc(docRef, updates);
+    await updateDoc(docRef, cleanUndefined(updates));
   }
 }
 
@@ -326,10 +340,10 @@ export async function recordSale(
   const nowIso = new Date().toISOString();
   
   // 1. Create Sale Doc
-  const docRef = await addDoc(getSalesCol(businessId), {
+  const docRef = await addDoc(getSalesCol(businessId), cleanUndefined({
     ...saleData,
     createdAt: nowIso,
-  });
+  }));
 
   // 2. If tied to customer, update customer metrics
   if (saleData.customerId) {
@@ -341,12 +355,12 @@ export async function recordSale(
         const currentDebt = Number(data.totalDebt || 0);
         const currentPurchased = Number(data.totalPurchased || 0);
         
-        await updateDoc(cRef, {
+        await updateDoc(cRef, cleanUndefined({
           totalDebt: currentDebt + Number(saleData.remainingAmount || 0),
           totalPurchased: currentPurchased + Number(saleData.totalAmount || 0),
           lastPurchaseDate: saleData.saleDate,
           updatedAt: nowIso,
-        });
+        }));
       }
     } catch (e) {
       console.warn('Customer balance update warning (offline safe):', e);
@@ -356,7 +370,7 @@ export async function recordSale(
   // 3. If paid partially or fully on the spot, record initial payment entry
   if (saleData.paidAmount > 0) {
     try {
-      await addDoc(getPaymentsCol(businessId), {
+      await addDoc(getPaymentsCol(businessId), cleanUndefined({
         saleId: docRef.id,
         customerId: saleData.customerId || 'avulso',
         customerName: saleData.customerName,
@@ -368,7 +382,7 @@ export async function recordSale(
         paymentDate: saleData.saleDate,
         notes: saleData.paymentStatus === 'paid' ? 'Pago à vista no ato da venda' : 'Entrada paga no ato da venda',
         createdAt: nowIso,
-      });
+      }));
     } catch (e) {
       console.warn('Initial payment record warning:', e);
     }
@@ -385,9 +399,9 @@ export async function recordSale(
             const pData = pSnap.data() as Product;
             const currentStock = Number(pData.stockQuantity !== undefined ? pData.stockQuantity : 0);
             const newStock = Math.max(0, currentStock - Number(item.quantity || 0));
-            await updateDoc(pRef, {
+            await updateDoc(pRef, cleanUndefined({
               stockQuantity: newStock,
-            });
+            }));
           }
         }
       } catch (e) {
@@ -438,10 +452,10 @@ export async function recordPayment(
   const nowIso = new Date().toISOString();
 
   // 1. Record payment doc
-  const payRef = await addDoc(getPaymentsCol(businessId), {
+  const payRef = await addDoc(getPaymentsCol(businessId), cleanUndefined({
     ...paymentData,
     createdAt: nowIso,
-  });
+  }));
 
   // 2. Deduct from customer total debt
   if (paymentData.customerId && paymentData.customerId !== 'avulso') {
@@ -452,10 +466,10 @@ export async function recordPayment(
         const cData = cSnap.data() as Customer;
         const currentDebt = Number(cData.totalDebt || 0);
         const newDebt = Math.max(0, currentDebt - paymentData.amount);
-        await updateDoc(cRef, {
+        await updateDoc(cRef, cleanUndefined({
           totalDebt: newDebt,
           updatedAt: nowIso,
-        });
+        }));
       }
     } catch (e) {
       console.warn('Customer balance reduction warning:', e);
@@ -475,11 +489,11 @@ export async function recordPayment(
         const newPaid = currentPaid + paymentData.amount;
         const newStatus = newRemaining === 0 ? 'paid' : 'partial';
 
-        await updateDoc(sRef, {
+        await updateDoc(sRef, cleanUndefined({
           paidAmount: newPaid,
           remainingAmount: newRemaining,
           paymentStatus: newStatus,
-        });
+        }));
       }
     } else if (paymentData.customerId) {
       // Auto-apply payment against oldest pending sales for this customer
@@ -501,11 +515,11 @@ export async function recordPayment(
         const newPaid = Number(sData.paidAmount || 0) + paidNow;
         const newStatus = newRemaining === 0 ? 'paid' : 'partial';
 
-        await updateDoc(sDoc.ref, {
+        await updateDoc(sDoc.ref, cleanUndefined({
           paidAmount: newPaid,
           remainingAmount: newRemaining,
           paymentStatus: newStatus,
-        });
+        }));
 
         moneyLeft -= paidNow;
       }
@@ -545,14 +559,15 @@ export async function addSeller(
   const salt = generateSalt();
   const pinHash = await hashPin(sellerData.pin, salt);
 
-  const docRef = await addDoc(getSellersCol(businessId), {
+  const docRef = await addDoc(getSellersCol(businessId), cleanUndefined({
     name: sellerData.name,
     role: sellerData.role,
     pinHash,
     pinSalt: salt,
     active: true,
     createdAt: new Date().toISOString(),
-  });
+  }));
 
   return docRef.id;
 }
+

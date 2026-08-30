@@ -97,7 +97,7 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
   const handleWhatsApp = (customer: Customer) => {
     const cleanPhone = customer.phone ? customer.phone.replace(/\D/g, '') : '';
     if (!cleanPhone) return;
-    const url = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(`Olá, ${customer.name}! Queijaria passando na rota hoje.`)}`;
+    const url = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(`Olá, ${customer.name}! Passando na rota de vendas hoje.`)}`;
     window.open(url, '_blank');
   };
 

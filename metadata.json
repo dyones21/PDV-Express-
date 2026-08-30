@@ -1,6 +1,6 @@
 {
-  "name": "Controle de Vendas de Queijo",
-  "description": "App PWA offline-first para controle de vendas porta a porta, fiado e recebimentos de queijos.",
+  "name": "PDV Express",
+  "description": "App PWA offline-first para controle de vendas, estoque, clientes e fiado para autônomos e MEI.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

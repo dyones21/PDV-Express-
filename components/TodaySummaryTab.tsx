@@ -80,9 +80,6 @@ export function TodaySummaryTab({
       <div className="grid grid-cols-2 gap-3">
         {/* Total Sold Card */}
         <div className="col-span-2 bg-gradient-to-br from-amber-700 to-amber-900 rounded-2xl p-4 text-white shadow-md relative overflow-hidden">
-          <div className="absolute -right-4 -bottom-4 opacity-10 text-8xl pointer-events-none">
-            🧀
-          </div>
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs font-medium text-amber-200">Total Vendido Hoje</span>
             <div className="p-1.5 rounded-lg bg-amber-600/40 text-amber-200">
@@ -175,12 +172,12 @@ export function TodaySummaryTab({
 
         {todaySales.length === 0 ? (
           <div className="text-center py-8 px-4">
-            <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center mx-auto text-2xl mb-2">
-              🧀
+            <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center mx-auto mb-2">
+              <ShoppingBag className="w-6 h-6" />
             </div>
             <p className="text-sm font-semibold text-neutral-800">Nenhuma venda registrada hoje ainda</p>
             <p className="text-xs text-neutral-500 mt-1 max-w-xs mx-auto">
-              Toque no botão acima para iniciar a rota e marcar sua primeira venda de queijo.
+              Toque no botão acima para iniciar o atendimento e marcar sua primeira venda.
             </p>
           </div>
         ) : (

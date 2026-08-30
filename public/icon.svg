@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <linearGradient id="cheeseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#FDE68A"/>
       <stop offset="50%" stop-color="#F59E0B"/>
       <stop offset="100%" stop-color="#D97706"/>
@@ -11,18 +11,18 @@
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="110" fill="url(#bgGrad)"/>
-  <!-- Cheese Wedge / Wheel -->
-  <g transform="translate(64, 80)">
-    <!-- Main Cheese Body -->
-    <path d="M40 280 L350 280 Q370 280 360 250 L270 90 Q260 70 230 75 L40 140 Q20 148 20 170 L20 250 Q20 280 40 280 Z" fill="url(#cheeseGrad)" stroke="#B45309" stroke-width="8"/>
-    <!-- Top Face of Cheese -->
-    <path d="M40 140 L230 75 Q260 70 270 90 L360 250 L140 210 L40 140 Z" fill="#FEF3C7" opacity="0.9"/>
-    <!-- Cheese Holes -->
-    <ellipse cx="120" cy="170" rx="18" ry="12" fill="#D97706" opacity="0.6"/>
-    <ellipse cx="200" cy="130" rx="22" ry="15" fill="#D97706" opacity="0.5"/>
-    <ellipse cx="280" cy="190" rx="16" ry="12" fill="#B45309" opacity="0.5"/>
-    <ellipse cx="90" cy="240" rx="20" ry="16" fill="#B45309" opacity="0.6"/>
-    <ellipse cx="210" cy="235" rx="25" ry="18" fill="#92400E" opacity="0.6"/>
-    <ellipse cx="300" cy="250" rx="14" ry="10" fill="#92400E" opacity="0.5"/>
+  <!-- Shopping Bag / Store POS Icon -->
+  <g transform="translate(106, 96)">
+    <!-- Bag Handle -->
+    <path d="M90 120 C90 50, 210 50, 210 120" fill="none" stroke="url(#accentGrad)" stroke-width="24" stroke-linecap="round"/>
+    <!-- Bag Body -->
+    <rect x="30" y="110" width="240" height="230" rx="36" fill="url(#accentGrad)" stroke="#B45309" stroke-width="8"/>
+    <!-- Price Tag / Receipt symbol in bag center -->
+    <g transform="translate(110, 180)">
+      <circle cx="40" cy="40" r="32" fill="#78350F"/>
+      <path d="M30 40 L38 48 L52 32" fill="none" stroke="#FEF3C7" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <!-- Accent Line -->
+    <path d="M60 160 L240 160" stroke="#FEF3C7" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
   </g>
 </svg>

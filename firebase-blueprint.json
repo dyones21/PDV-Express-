@@ -40,7 +40,7 @@
     },
     "Product": {
       "title": "Product",
-      "description": "Produto/Queijo comercializado",
+      "description": "Produto comercializado e estoque",
       "type": "object",
       "properties": {
         "name": { "type": "string" },
@@ -53,7 +53,7 @@
     },
     "Sale": {
       "title": "Sale",
-      "description": "Registro de venda de queijo porta a porta",
+      "description": "Registro de venda e faturamento",
       "type": "object",
       "properties": {
         "customerId": { "type": "string" },
@@ -105,7 +105,7 @@
     },
     "businesses/{businessId}/products/{productId}": {
       "schema": "Product",
-      "description": "Produtos e queijos deste negócio"
+      "description": "Produtos cadastrados deste negócio"
     },
     "businesses/{businessId}/sales/{saleId}": {
       "schema": "Sale",

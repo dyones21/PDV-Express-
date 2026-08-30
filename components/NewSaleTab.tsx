@@ -150,7 +150,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
 
   const handleSubmitSale = async () => {
     if (selectedItems.length === 0) {
-      alert('Selecione pelo menos um queijo ou produto para a venda.');
+      alert('Selecione pelo menos um produto para a venda.');
       return;
     }
 
@@ -207,9 +207,9 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
   };
 
   const handleShareWhatsApp = (sale: any) => {
-    const text = `🧀 *Recibo de Compra - Queijaria*\n\n` +
+    const text = `📦 *Comprovante de Compra - PDV Express*\n\n` +
       `Olá, *${sale.customerName}*!\n` +
-      `Aqui está o comprovante da sua compra de queijo:\n\n` +
+      `Aqui está o comprovante da sua compra:\n\n` +
       sale.items.map((i: any) => `• ${i.quantity}x ${i.productName} - ${formatCurrency(i.subtotal)}`).join('\n') +
       `\n\n*Total:* ${formatCurrency(sale.totalAmount)}\n` +
       (sale.paymentStatus === 'paid'
@@ -231,7 +231,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
       {/* Title */}
       <div className="px-1">
         <h2 className="text-lg font-bold text-neutral-900 leading-tight flex items-center gap-2">
-          <span>🧀 Nova Venda de Queijo</span>
+          <span>Nova Venda</span>
         </h2>
         <p className="text-xs text-neutral-500 font-medium">
           Operador atual: <span className="font-bold text-amber-900">{activeSeller?.name || 'Vendedor'}</span>
@@ -376,12 +376,12 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
         )}
       </div>
 
-      {/* STEP 2: PRODUTOS / QUEIJOS */}
+      {/* STEP 2: PRODUTOS */}
       <div className="bg-white rounded-2xl p-4 border border-neutral-200/80 shadow-sm space-y-3">
         <div className="flex items-center justify-between">
           <label className="text-xs font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
             <ShoppingBag className="w-3.5 h-3.5" />
-            2. Escolha os Queijos e Quantidades
+            2. Escolha os Produtos e Quantidades
           </label>
           <span className="text-xs font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full">
             {selectedItems.length} {selectedItems.length === 1 ? 'item' : 'itens'}
@@ -471,7 +471,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
                 {/* If selected, show subtotal line */}
                 {isSelected && (
                   <div className="mt-2 pt-2 border-t border-amber-200/60 flex items-center justify-between text-xs">
-                    <span className="text-amber-800 font-medium">Subtotal deste queijo:</span>
+                    <span className="text-amber-800 font-medium">Subtotal deste produto:</span>
                     <span className="font-extrabold text-amber-950">
                       {formatCurrency(qty * currentPrice)}
                     </span>

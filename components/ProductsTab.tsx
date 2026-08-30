@@ -38,8 +38,8 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
   const [price, setPrice] = useState('');
   const [costPrice, setCostPrice] = useState('');
   const [stockQuantity, setStockQuantity] = useState('');
-  const [unit, setUnit] = useState('peça');
-  const [category, setCategory] = useState('Queijos Tradicionais');
+  const [unit, setUnit] = useState('un');
+  const [category, setCategory] = useState('Geral');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Modal State for Quick Restock
@@ -71,8 +71,8 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
     setPrice('');
     setCostPrice('');
     setStockQuantity('10');
-    setUnit('peça');
-    setCategory('Queijos Tradicionais');
+    setUnit('un');
+    setCategory('Geral');
     setIsFormModalOpen(true);
   };
 
@@ -82,8 +82,8 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
     setPrice(p.price.toString());
     setCostPrice(p.costPrice !== undefined ? p.costPrice.toString() : '');
     setStockQuantity(p.stockQuantity !== undefined ? p.stockQuantity.toString() : '0');
-    setUnit(p.unit || 'peça');
-    setCategory(p.category || 'Queijos Tradicionais');
+    setUnit(p.unit || 'un');
+    setCategory(p.category || 'Geral');
     setIsFormModalOpen(true);
   };
 
@@ -199,7 +199,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
           className="py-2 px-3 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 transition active:scale-95"
         >
           <Plus className="w-4 h-4" />
-          <span>Novo Queijo</span>
+          <span>Novo Produto</span>
         </button>
       </div>
 
@@ -240,7 +240,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
             )}
           </div>
           <div className="text-[10px] text-neutral-500 font-medium mt-0.5">
-            {lowStockCount > 0 ? 'Queijos com < 5 un' : 'Estoque abastecido'}
+            {lowStockCount > 0 ? 'Itens com < 5 un' : 'Estoque abastecido'}
           </div>
         </div>
       </div>
@@ -252,7 +252,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
           <input
             id="input-search-products"
             type="text"
-            placeholder="Buscar por nome do queijo ou categoria..."
+            placeholder="Buscar por nome do produto ou categoria..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-neutral-50/50"
@@ -284,9 +284,9 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
         {filteredProducts.length === 0 ? (
           <div className="bg-white rounded-2xl p-8 border border-neutral-200 text-center space-y-2">
             <Package className="w-10 h-10 text-neutral-300 mx-auto" />
-            <div className="text-sm font-bold text-neutral-800">Nenhum queijo encontrado</div>
+            <div className="text-sm font-bold text-neutral-800">Nenhum produto encontrado</div>
             <p className="text-xs text-neutral-500">
-              {searchTerm ? 'Tente buscar com outro termo' : 'Cadastre seu primeiro queijo clicando no botão acima'}
+              {searchTerm ? 'Tente buscar com outro termo' : 'Cadastre seu primeiro produto clicando no botão acima'}
             </p>
           </div>
         ) : (
@@ -326,9 +326,9 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                       )}
                     </div>
                     <div className="text-xs text-neutral-500 mt-0.5 flex items-center gap-1.5">
-                      <span>{prod.category || 'Queijos'}</span>
+                      <span>{prod.category || 'Geral'}</span>
                       <span>•</span>
-                      <span>Unidade: {prod.unit || 'peça'}</span>
+                      <span>Unidade: {prod.unit || 'un'}</span>
                     </div>
                   </div>
 
@@ -444,7 +444,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
             <div className="bg-amber-700 px-4 py-3 text-white flex items-center justify-between flex-shrink-0">
               <h3 className="font-bold text-sm flex items-center gap-2">
                 <Package className="w-4 h-4" />
-                <span>{editingProduct ? 'Editar Queijo / Produto' : 'Cadastrar Novo Queijo'}</span>
+                <span>{editingProduct ? 'Editar Produto' : 'Cadastrar Novo Produto'}</span>
               </h3>
               <button
                 type="button"
@@ -461,13 +461,13 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
             <form onSubmit={handleSaveProduct} className="p-4 space-y-3 overflow-y-auto">
               <div>
                 <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                  Nome do Queijo / Produto *
+                  Nome do Produto *
                 </label>
                 <input
                   id="input-prod-form-name"
                   type="text"
                   required
-                  placeholder="Ex: Queijo Minas Meia Cura"
+                  placeholder="Ex: Produto A, Peça 1..."
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500 font-semibold"
@@ -566,7 +566,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                 <input
                   id="input-prod-form-category"
                   type="text"
-                  placeholder="Queijos Tradicionais, Especiais, Doces..."
+                  placeholder="Geral, Alimentos, Bebidas, Roupas..."
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
                   className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500"
@@ -590,7 +590,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                   disabled={isSubmitting}
                   className="flex-1 py-2.5 text-xs font-bold text-white bg-amber-700 hover:bg-amber-800 rounded-xl shadow-md flex items-center justify-center gap-1.5"
                 >
-                  {isSubmitting ? 'Salvando...' : 'Salvar Queijo'}
+                  {isSubmitting ? 'Salvando...' : 'Salvar Produto'}
                 </button>
               </div>
             </form>

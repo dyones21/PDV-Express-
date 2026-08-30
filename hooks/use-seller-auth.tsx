@@ -18,7 +18,8 @@ interface SellerAuthContextType {
 
 const SellerAuthContext = createContext<SellerAuthContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'vendas_queijo_active_seller_id';
+const STORAGE_KEY = 'pdv_active_seller_id';
+const LEGACY_STORAGE_KEY = 'vendas_queijo_active_seller_id';
 
 export function SellerAuthProvider({ children }: { children: React.ReactNode }) {
   const [sellers, setSellers] = useState<Seller[]>([]);
@@ -34,7 +35,9 @@ export function SellerAuthProvider({ children }: { children: React.ReactNode }) 
       setSellers(list);
 
       // Check stored seller ID
-      const storedId = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+      const storedId = typeof window !== 'undefined'
+        ? localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY)
+        : null;
       if (storedId) {
         const found = list.find((s) => s.id === storedId);
         if (found) {

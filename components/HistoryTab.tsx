@@ -192,7 +192,7 @@ export function HistoryTab({
           <input
             id="input-search-history"
             type="text"
-            placeholder="Buscar por cliente ou queijo..."
+            placeholder="Buscar por cliente ou produto..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-neutral-200 bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none"

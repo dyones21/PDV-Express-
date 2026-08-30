@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
 import { useNetworkSync } from '@/hooks/use-network-sync';
-import { Wifi, WifiOff, RefreshCw, UserCheck, Download, Sparkles, ShieldCheck } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw, UserCheck, Download, ShoppingBag, ShieldCheck } from 'lucide-react';
 import { SellerSwitchModal } from './SellerSwitchModal';
 
 interface HeaderProps {
@@ -21,17 +21,17 @@ export function Header({ hasPendingWrites }: HeaderProps) {
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
           {/* Logo and Title */}
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-300/30 flex items-center justify-center text-xl shadow-inner">
-              🧀
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-300/30 flex items-center justify-center shadow-inner">
+              <ShoppingBag className="w-5 h-5 text-amber-200" />
             </div>
             <div>
               <h1 className="text-base font-bold leading-tight tracking-tight flex items-center gap-1.5 text-amber-50">
-                Queijaria Vendas
+                PDV Express
                 <span className="text-[10px] uppercase font-semibold tracking-wider bg-amber-900/60 px-1.5 py-0.5 rounded text-amber-200">
                   MEI
                 </span>
               </h1>
-              <p className="text-xs text-amber-200/90 font-medium">Controle de Rota & Fiado</p>
+              <p className="text-xs text-amber-200/90 font-medium">Controle de Vendas & Fiado</p>
             </div>
           </div>
 
