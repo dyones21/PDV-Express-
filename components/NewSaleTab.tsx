@@ -394,6 +394,8 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
             const qty = quantities[prod.id] || 0;
             const currentPrice = customPriceOverrides[prod.id] !== undefined ? customPriceOverrides[prod.id] : prod.price;
             const isSelected = qty > 0;
+            const stock = prod.stockQuantity !== undefined ? prod.stockQuantity : 0;
+            const isOverStock = qty > stock;
 
             return (
               <div
@@ -411,11 +413,23 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
                     <div className="font-bold text-sm text-neutral-900 truncate">
                       {prod.name}
                     </div>
-                    <div className="flex items-center gap-1.5 text-xs text-neutral-600 mt-0.5">
+                    <div className="flex items-center gap-2 text-xs text-neutral-600 mt-0.5 flex-wrap">
                       <span className="font-semibold text-amber-900">
                         {formatCurrency(currentPrice)}
                       </span>
                       <span className="text-neutral-400">/ {prod.unit || 'peça'}</span>
+                      <span className="text-neutral-300">•</span>
+                      <span
+                        className={`text-[11px] font-semibold ${
+                          stock <= 0
+                            ? 'text-red-600'
+                            : stock < 5
+                            ? 'text-amber-700 font-bold'
+                            : 'text-neutral-500'
+                        }`}
+                      >
+                        Estoque: {stock} {prod.unit || 'un'}
+                      </span>
                     </div>
                   </div>
 
@@ -445,6 +459,14 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
                     </button>
                   </div>
                 </div>
+
+                {/* Overstock soft warning (does not block sale) */}
+                {isSelected && isOverStock && (
+                  <div className="mt-2 text-[11px] text-amber-800 bg-amber-100/80 px-2 py-1 rounded-lg font-medium flex items-center gap-1">
+                    <span>⚠️</span>
+                    <span>Qtd ({qty}) excede o estoque cadastrado ({stock} {prod.unit || 'un'}). A venda será permitida normalmente.</span>
+                  </div>
+                )}
 
                 {/* If selected, show subtotal line */}
                 {isSelected && (

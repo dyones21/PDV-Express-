@@ -96,13 +96,13 @@ export async function ensureDefaultBusinessData(businessId = DEFAULT_BUSINESS_ID
     const prodSnap = await getDocs(getProductsCol(businessId));
     if (prodSnap.empty) {
       const defaultProducts: Array<Omit<Product, 'id'>> = [
-        { name: 'Queijo Minas Meia Cura', price: 38.0, unit: 'peça', active: true, category: 'Queijos Tradicionais', sortOrder: 1 },
-        { name: 'Queijo Canastra Artesanal', price: 45.0, unit: 'peça', active: true, category: 'Queijos Especiais', sortOrder: 2 },
-        { name: 'Queijo Provolone Defumado', price: 40.0, unit: 'peça', active: true, category: 'Defumados', sortOrder: 3 },
-        { name: 'Queijo Parmesão Curado', price: 48.0, unit: 'peça', active: true, category: 'Curados', sortOrder: 4 },
-        { name: 'Requeijão de Corte Moreno', price: 32.0, unit: 'barra', active: true, category: 'Requeijões', sortOrder: 5 },
-        { name: 'Queijo Coalho Espeto', price: 30.0, unit: 'pacote', active: true, category: 'Especiais', sortOrder: 6 },
-        { name: 'Goiabada Cascão Caseira', price: 18.0, unit: 'barra', active: true, category: 'Doces', sortOrder: 7 },
+        { name: 'Queijo Minas Meia Cura', price: 38.0, costPrice: 22.0, stockQuantity: 20, unit: 'peça', active: true, category: 'Queijos Tradicionais', sortOrder: 1 },
+        { name: 'Queijo Canastra Artesanal', price: 45.0, costPrice: 28.0, stockQuantity: 15, unit: 'peça', active: true, category: 'Queijos Especiais', sortOrder: 2 },
+        { name: 'Queijo Provolone Defumado', price: 40.0, costPrice: 24.0, stockQuantity: 12, unit: 'peça', active: true, category: 'Defumados', sortOrder: 3 },
+        { name: 'Queijo Parmesão Curado', price: 48.0, costPrice: 30.0, stockQuantity: 10, unit: 'peça', active: true, category: 'Curados', sortOrder: 4 },
+        { name: 'Requeijão de Corte Moreno', price: 32.0, costPrice: 19.0, stockQuantity: 14, unit: 'barra', active: true, category: 'Requeijões', sortOrder: 5 },
+        { name: 'Queijo Coalho Espeto', price: 30.0, costPrice: 17.0, stockQuantity: 18, unit: 'pacote', active: true, category: 'Especiais', sortOrder: 6 },
+        { name: 'Goiabada Cascão Caseira', price: 18.0, costPrice: 9.5, stockQuantity: 25, unit: 'barra', active: true, category: 'Doces', sortOrder: 7 },
       ];
 
       for (const p of defaultProducts) {
@@ -274,6 +274,28 @@ export async function updateProduct(
   await updateDoc(docRef, updates);
 }
 
+export async function restockProduct(
+  businessId = DEFAULT_BUSINESS_ID,
+  productId: string,
+  addedQuantity: number,
+  newCostPrice?: number
+): Promise<void> {
+  await ensureAuthSession();
+  const docRef = doc(getProductsCol(businessId), productId);
+  const snap = await getDoc(docRef);
+  if (snap.exists()) {
+    const data = snap.data() as Product;
+    const currentStock = Number(data.stockQuantity !== undefined ? data.stockQuantity : 0);
+    const updates: Partial<Product> = {
+      stockQuantity: currentStock + addedQuantity,
+    };
+    if (newCostPrice !== undefined && newCostPrice > 0) {
+      updates.costPrice = newCostPrice;
+    }
+    await updateDoc(docRef, updates);
+  }
+}
+
 // ----------------- SALES -----------------
 
 export function subscribeSales(
@@ -349,6 +371,28 @@ export async function recordSale(
       });
     } catch (e) {
       console.warn('Initial payment record warning:', e);
+    }
+  }
+
+  // 4. Update Product Stock (Decrement stockQuantity)
+  if (saleData.items && saleData.items.length > 0) {
+    for (const item of saleData.items) {
+      try {
+        if (item.productId && item.productId !== 'sample') {
+          const pRef = doc(getProductsCol(businessId), item.productId);
+          const pSnap = await getDoc(pRef);
+          if (pSnap.exists()) {
+            const pData = pSnap.data() as Product;
+            const currentStock = Number(pData.stockQuantity !== undefined ? pData.stockQuantity : 0);
+            const newStock = Math.max(0, currentStock - Number(item.quantity || 0));
+            await updateDoc(pRef, {
+              stockQuantity: newStock,
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Product stock decrement warning (offline safe):', e);
+      }
     }
   }
 

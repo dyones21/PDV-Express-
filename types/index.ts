@@ -32,6 +32,8 @@ export interface Product {
   id: string;
   name: string;
   price: number;
+  costPrice?: number;
+  stockQuantity?: number;
   unit: string; // 'un' | 'kg' | 'peça' | 'bandeja'
   active: boolean;
   category?: string;

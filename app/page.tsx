@@ -10,7 +10,7 @@ import {
   subscribeSellers,
   DEFAULT_BUSINESS_ID 
 } from '@/lib/db';
-import { SellerAuthProvider, useSellerAuth } from '@/hooks/use-seller-auth';
+import { SellerAuthProvider } from '@/hooks/use-seller-auth';
 import { Header } from '@/components/Header';
 import { BottomNav, TabType } from '@/components/BottomNav';
 import { TodaySummaryTab } from '@/components/TodaySummaryTab';
@@ -18,6 +18,7 @@ import { NewSaleTab } from '@/components/NewSaleTab';
 import { DebtorsTab } from '@/components/DebtorsTab';
 import { HistoryTab } from '@/components/HistoryTab';
 import { CustomersTab } from '@/components/CustomersTab';
+import { ProductsTab } from '@/components/ProductsTab';
 import { SettingsTab } from '@/components/SettingsTab';
 import { SaleDetailsModal } from '@/components/SaleDetailsModal';
 
@@ -102,12 +103,10 @@ function MainAppContent() {
           <DebtorsTab customers={customers} sales={sales} />
         )}
 
-        {activeTab === 'historico' && (
-          <HistoryTab
-            sales={sales}
-            payments={payments}
-            customers={customers}
-            onOpenSaleDetails={(sale) => setSelectedSaleForDetails(sale)}
+        {activeTab === 'produtos' && (
+          <ProductsTab
+            products={products}
+            onOpenNewSale={() => setActiveTab('nova-venda')}
           />
         )}
 
@@ -119,9 +118,17 @@ function MainAppContent() {
           />
         )}
 
+        {activeTab === 'historico' && (
+          <HistoryTab
+            sales={sales}
+            payments={payments}
+            customers={customers}
+            onOpenSaleDetails={(sale) => setSelectedSaleForDetails(sale)}
+          />
+        )}
+
         {activeTab === 'config' && (
           <SettingsTab
-            products={products}
             sellers={sellers}
             onOpenNewSale={() => setActiveTab('nova-venda')}
           />
