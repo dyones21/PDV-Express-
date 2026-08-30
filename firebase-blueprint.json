@@ -1,0 +1,119 @@
+{
+  "entities": {
+    "Business": {
+      "title": "Business",
+      "description": "Dados da empresa/negócio MEI",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "ownerEmail": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "Seller": {
+      "title": "Seller",
+      "description": "Vendedor do negócio com PIN seguro",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["owner", "seller"] },
+        "pinHash": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "role", "active"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Cliente da rota de vendas",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "referencePoint": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Produto/Queijo comercializado",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "unit": { "type": "string" },
+        "active": { "type": "boolean" },
+        "category": { "type": "string" }
+      },
+      "required": ["name", "price", "active"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "Registro de venda de queijo porta a porta",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "sellerName": { "type": "string" },
+        "items": { "type": "array" },
+        "totalAmount": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "remainingAmount": { "type": "number" },
+        "paymentStatus": { "type": "string", "enum": ["paid", "pending", "partial"] },
+        "paymentMethod": { "type": "string" },
+        "notes": { "type": "string" },
+        "saleDate": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["customerName", "sellerName", "items", "totalAmount", "paymentStatus", "saleDate"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Pagamento / quitação de fiado",
+      "type": "object",
+      "properties": {
+        "saleId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "amount": { "type": "number" },
+        "sellerId": { "type": "string" },
+        "sellerName": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "paymentDate": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["customerId", "customerName", "amount", "sellerName", "paymentDate"]
+    }
+  },
+  "firestore": {
+    "businesses/{businessId}": {
+      "schema": "Business",
+      "description": "Documento raiz do negócio do MEI"
+    },
+    "businesses/{businessId}/sellers/{sellerId}": {
+      "schema": "Seller",
+      "description": "Vendedores vinculados a este negócio"
+    },
+    "businesses/{businessId}/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Clientes da rota deste negócio"
+    },
+    "businesses/{businessId}/products/{productId}": {
+      "schema": "Product",
+      "description": "Produtos e queijos deste negócio"
+    },
+    "businesses/{businessId}/sales/{saleId}": {
+      "schema": "Sale",
+      "description": "Vendas registradas"
+    },
+    "businesses/{businessId}/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Recebimentos e baixas de fiado"
+    }
+  }
+}

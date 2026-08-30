@@ -1,0 +1,155 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { Customer, Product, Sale, Payment, Seller } from '@/types';
+import { 
+  subscribeCustomers, 
+  subscribeProducts, 
+  subscribeSales, 
+  subscribePayments, 
+  subscribeSellers,
+  DEFAULT_BUSINESS_ID 
+} from '@/lib/db';
+import { SellerAuthProvider, useSellerAuth } from '@/hooks/use-seller-auth';
+import { Header } from '@/components/Header';
+import { BottomNav, TabType } from '@/components/BottomNav';
+import { TodaySummaryTab } from '@/components/TodaySummaryTab';
+import { NewSaleTab } from '@/components/NewSaleTab';
+import { DebtorsTab } from '@/components/DebtorsTab';
+import { HistoryTab } from '@/components/HistoryTab';
+import { CustomersTab } from '@/components/CustomersTab';
+import { SettingsTab } from '@/components/SettingsTab';
+import { SaleDetailsModal } from '@/components/SaleDetailsModal';
+
+function MainAppContent() {
+  const [activeTab, setActiveTab] = useState<TabType>('hoje');
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [sellers, setSellers] = useState<Seller[]>([]);
+  
+  const [hasPendingWrites, setHasPendingWrites] = useState(false);
+  const [selectedSaleForDetails, setSelectedSaleForDetails] = useState<Sale | null>(null);
+
+  useEffect(() => {
+    // 1. Subscribe Customers
+    const unsubCust = subscribeCustomers(DEFAULT_BUSINESS_ID, (list, meta) => {
+      setCustomers(list);
+      if (meta.hasPendingWrites) setHasPendingWrites(true);
+    });
+
+    // 2. Subscribe Products
+    const unsubProd = subscribeProducts(DEFAULT_BUSINESS_ID, (list) => {
+      setProducts(list);
+    });
+
+    // 3. Subscribe Sales
+    const unsubSales = subscribeSales(DEFAULT_BUSINESS_ID, (list, meta) => {
+      setSales(list);
+      setHasPendingWrites(meta.hasPendingWrites);
+    });
+
+    // 4. Subscribe Payments
+    const unsubPay = subscribePayments(DEFAULT_BUSINESS_ID, (list, meta) => {
+      setPayments(list);
+      if (meta.hasPendingWrites) setHasPendingWrites(true);
+    });
+
+    // 5. Subscribe Sellers
+    const unsubSellers = subscribeSellers(DEFAULT_BUSINESS_ID, (list) => {
+      setSellers(list);
+    });
+
+    return () => {
+      unsubCust();
+      unsubProd();
+      unsubSales();
+      unsubPay();
+      unsubSellers();
+    };
+  }, []);
+
+  const pendingDebtorsCount = customers.filter((c) => (c.totalDebt || 0) > 0).length;
+
+  return (
+    <div className="min-h-screen bg-amber-50/40 text-neutral-900 flex flex-col font-sans select-none">
+      {/* Header with Connectivity and Operator */}
+      <Header hasPendingWrites={hasPendingWrites} />
+
+      {/* Main Container */}
+      <main className="flex-1 max-w-2xl w-full mx-auto px-4 py-2">
+        {activeTab === 'hoje' && (
+          <TodaySummaryTab
+            sales={sales}
+            customers={customers}
+            onOpenNewSale={() => setActiveTab('nova-venda')}
+            onOpenDebtors={() => setActiveTab('a-receber')}
+            onOpenSaleDetails={(sale) => setSelectedSaleForDetails(sale)}
+            onOpenSettings={() => setActiveTab('config')}
+          />
+        )}
+
+        {activeTab === 'nova-venda' && (
+          <NewSaleTab
+            customers={customers}
+            products={products}
+            onSaleCompleted={() => setActiveTab('hoje')}
+          />
+        )}
+
+        {activeTab === 'a-receber' && (
+          <DebtorsTab customers={customers} sales={sales} />
+        )}
+
+        {activeTab === 'historico' && (
+          <HistoryTab
+            sales={sales}
+            payments={payments}
+            customers={customers}
+            onOpenSaleDetails={(sale) => setSelectedSaleForDetails(sale)}
+          />
+        )}
+
+        {activeTab === 'clientes' && (
+          <CustomersTab
+            customers={customers}
+            sales={sales}
+            onOpenSaleDetails={(sale) => setSelectedSaleForDetails(sale)}
+          />
+        )}
+
+        {activeTab === 'config' && (
+          <SettingsTab
+            products={products}
+            sellers={sellers}
+            onOpenNewSale={() => setActiveTab('nova-venda')}
+          />
+        )}
+      </main>
+
+      {/* Sale Details Modal */}
+      {selectedSaleForDetails && (
+        <SaleDetailsModal
+          sale={selectedSaleForDetails}
+          onClose={() => setSelectedSaleForDetails(null)}
+        />
+      )}
+
+      {/* Bottom Touch Navigation */}
+      <BottomNav
+        activeTab={activeTab}
+        onChangeTab={(tab) => setActiveTab(tab)}
+        pendingDebtorsCount={pendingDebtorsCount}
+      />
+    </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <SellerAuthProvider>
+      <MainAppContent />
+    </SellerAuthProvider>
+  );
+}

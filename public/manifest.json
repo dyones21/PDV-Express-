@@ -1,0 +1,17 @@
+{
+  "name": "Controle de Vendas de Queijo",
+  "short_name": "Vendas Queijo",
+  "description": "App PWA offline-first para controle de vendas porta a porta, fiado e recebimentos de queijos.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFBEB",
+  "theme_color": "#D97706",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
