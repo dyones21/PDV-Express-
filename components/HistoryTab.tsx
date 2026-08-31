@@ -86,10 +86,14 @@ export function HistoryTab({
     });
   }, [sales, period, customDate, selectedSellerFilter, searchTerm, todayStr]);
 
-  // Compute aggregated stats for the filtered sales
-  const totalSold = filteredSales.reduce((acc, s) => acc + (s.totalAmount || 0), 0);
-  const totalReceivedOnSpot = filteredSales.reduce((acc, s) => acc + (s.paidAmount || 0), 0);
-  const totalPending = filteredSales.reduce((acc, s) => acc + (s.remainingAmount || 0), 0);
+  // Compute aggregated stats for the filtered sales (excluding cancelled sales)
+  const activeFilteredSales = useMemo(() => {
+    return filteredSales.filter((s) => !s.isCancelled && s.paymentStatus !== 'cancelled');
+  }, [filteredSales]);
+
+  const totalSold = activeFilteredSales.reduce((acc, s) => acc + (s.totalAmount || 0), 0);
+  const totalReceivedOnSpot = activeFilteredSales.reduce((acc, s) => acc + (s.paidAmount || 0), 0);
+  const totalPending = activeFilteredSales.reduce((acc, s) => acc + (s.remainingAmount || 0), 0);
 
   // Extract unique sellers from sales
   const uniqueSellers = useMemo(() => {
@@ -257,10 +261,14 @@ export function HistoryTab({
                 </div>
 
                 <div className="text-right flex flex-col items-end">
-                  <div className="text-sm font-extrabold text-neutral-900">
+                  <div className={`text-sm font-extrabold ${sale.isCancelled || sale.paymentStatus === 'cancelled' ? 'line-through text-neutral-400' : 'text-neutral-900'}`}>
                     {formatCurrency(sale.totalAmount)}
                   </div>
-                  {sale.paymentStatus === 'paid' ? (
+                  {sale.isCancelled || sale.paymentStatus === 'cancelled' ? (
+                    <span className="text-[10px] font-bold text-red-800 bg-red-100 px-2 py-0.5 rounded-full mt-1">
+                      Cancelada
+                    </span>
+                  ) : sale.paymentStatus === 'paid' ? (
                     <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full mt-1">
                       Pago
                     </span>

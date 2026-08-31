@@ -39,12 +39,17 @@ export function DebtorsTab({ customers, sales }: DebtorsTabProps) {
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Filter debtors: customers with totalDebt > 0 or with pending sales
+  // Filter debtors: customers with totalDebt > 0 or with pending non-cancelled sales
   const debtors = customers
     .filter((c) => {
       const hasDebt = (c.totalDebt || 0) > 0;
       const hasPendingSales = sales.some(
-        (s) => s.customerId === c.id && s.paymentStatus !== 'paid' && (s.remainingAmount || 0) > 0
+        (s) =>
+          s.customerId === c.id &&
+          !s.isCancelled &&
+          s.paymentStatus !== 'cancelled' &&
+          s.paymentStatus !== 'paid' &&
+          (s.remainingAmount || 0) > 0
       );
       return hasDebt || hasPendingSales;
     })
@@ -165,7 +170,11 @@ export function DebtorsTab({ customers, sales }: DebtorsTabProps) {
           {debtors.map((customer) => {
             const isExpanded = expandedCustomerId === customer.id;
             const customerSales = sales.filter(
-              (s) => s.customerId === customer.id && s.paymentStatus !== 'paid'
+              (s) =>
+                s.customerId === customer.id &&
+                !s.isCancelled &&
+                s.paymentStatus !== 'cancelled' &&
+                s.paymentStatus !== 'paid'
             );
 
             return (

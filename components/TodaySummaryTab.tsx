@@ -38,8 +38,10 @@ export function TodaySummaryTab({
 }: TodaySummaryTabProps) {
   const todayStr = getTodayDateString();
 
-  // Filter sales for today
-  const todaySales = sales.filter((s) => s.saleDate === todayStr);
+  // Filter sales for today (excluding cancelled sales)
+  const todaySales = sales.filter(
+    (s) => s.saleDate === todayStr && !s.isCancelled && s.paymentStatus !== 'cancelled'
+  );
 
   // Compute metrics
   const totalSoldToday = todaySales.reduce((acc, s) => acc + (s.totalAmount || 0), 0);

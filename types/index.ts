@@ -49,7 +49,7 @@ export interface SaleItem {
   unit?: string;
 }
 
-export type PaymentStatus = 'paid' | 'pending' | 'partial';
+export type PaymentStatus = 'paid' | 'pending' | 'partial' | 'cancelled';
 export type PaymentMethod = 'dinheiro' | 'pix' | 'cartao_debito' | 'cartao_credito' | 'outro';
 
 export interface Sale {
@@ -71,6 +71,10 @@ export interface Sale {
   saleDate: string; // YYYY-MM-DD
   createdAt: string; // ISO String
   hasPendingWrites?: boolean; // Firestore offline sync status
+  isCancelled?: boolean;
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancellationReason?: string;
 }
 
 export interface Payment {

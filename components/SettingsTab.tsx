@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Seller } from '@/types';
+import { Seller, Sale, Customer } from '@/types';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
 import { useNetworkSync } from '@/hooks/use-network-sync';
+import { exportSalesCsv, exportDebtorsCsv } from '@/lib/export-csv';
 import { 
   Settings, 
   Users, 
@@ -13,19 +14,39 @@ import {
   ShieldCheck, 
   HardDrive,
   UserCheck,
-  Smartphone
+  Smartphone,
+  Download,
+  FileSpreadsheet,
+  AlertCircle
 } from 'lucide-react';
 import { SellerSwitchModal } from './SellerSwitchModal';
 
 interface SettingsTabProps {
   sellers: Seller[];
+  sales?: Sale[];
+  customers?: Customer[];
   onOpenNewSale?: () => void;
 }
 
-export function SettingsTab({ sellers }: SettingsTabProps) {
+export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTabProps) {
   const { activeSeller } = useSellerAuth();
   const { isOnline, canInstallPwa, promptInstall } = useNetworkSync();
   const [isSwitchModalOpen, setIsSwitchModalOpen] = useState(false);
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
+  const [exportSuccessMsg, setExportSuccessMsg] = useState('');
+
+  const handleExportSales = () => {
+    exportSalesCsv(sales, exportStartDate || undefined, exportEndDate || undefined);
+    setExportSuccessMsg('Arquivo de vendas exportado com sucesso!');
+    setTimeout(() => setExportSuccessMsg(''), 4000);
+  };
+
+  const handleExportDebtors = () => {
+    exportDebtorsCsv(customers, sales);
+    setExportSuccessMsg('Arquivo de clientes e fiados exportado com sucesso!');
+    setTimeout(() => setExportSuccessMsg(''), 4000);
+  };
 
   return (
     <div className="space-y-5 pb-24 pt-2">
@@ -96,6 +117,83 @@ export function SettingsTab({ sellers }: SettingsTabProps) {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Backup & Exportação de Dados */}
+      <div className="bg-white rounded-2xl p-4 border border-neutral-200/80 shadow-sm space-y-3">
+        <div className="flex items-center gap-2">
+          <FileSpreadsheet className="w-4 h-4 text-amber-700" />
+          <h3 className="text-sm font-bold text-neutral-900">Exportação & Backup de Dados</h3>
+        </div>
+
+        <p className="text-xs text-neutral-600">
+          Baixe cópias em planilha (CSV/Excel) das suas vendas e clientes para conferência ou segurança no computador.
+        </p>
+
+        {exportSuccessMsg && (
+          <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+            <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <span>{exportSuccessMsg}</span>
+          </div>
+        )}
+
+        {/* Filtro Opcional de Período para Vendas */}
+        <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 space-y-3">
+          <div className="text-xs font-bold text-neutral-800">
+            1. Relatório de Vendas
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <label className="block text-[11px] font-semibold text-neutral-600 mb-1">Data Início (opcional):</label>
+              <input
+                id="input-export-start-date"
+                type="date"
+                value={exportStartDate}
+                onChange={(e) => setExportStartDate(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-white rounded-lg border border-neutral-300 text-neutral-800 text-xs focus:ring-1 focus:ring-amber-500"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-neutral-600 mb-1">Data Fim (opcional):</label>
+              <input
+                id="input-export-end-date"
+                type="date"
+                value={exportEndDate}
+                onChange={(e) => setExportEndDate(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-white rounded-lg border border-neutral-300 text-neutral-800 text-xs focus:ring-1 focus:ring-amber-500"
+              />
+            </div>
+          </div>
+
+          <button
+            id="btn-export-sales-csv"
+            type="button"
+            onClick={handleExportSales}
+            className="w-full py-2.5 bg-amber-700 hover:bg-amber-800 text-white font-bold rounded-xl text-xs shadow-sm flex items-center justify-center gap-2 transition active:scale-98"
+          >
+            <Download className="w-4 h-4" />
+            <span>Exportar Vendas (.CSV / Excel)</span>
+          </button>
+        </div>
+
+        {/* Exportar Clientes e Fiados */}
+        <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 space-y-2">
+          <div className="text-xs font-bold text-neutral-800">
+            2. Relatório de Clientes com Fiado em Aberto
+          </div>
+          <p className="text-[11px] text-neutral-500">
+            Gera a lista completa com nome, telefone, endereço, ponto de referência e valor a receber de cada cliente.
+          </p>
+          <button
+            id="btn-export-debtors-csv"
+            type="button"
+            onClick={handleExportDebtors}
+            className="w-full py-2.5 bg-neutral-800 hover:bg-neutral-900 text-white font-bold rounded-xl text-xs shadow-sm flex items-center justify-center gap-2 transition active:scale-98"
+          >
+            <Download className="w-4 h-4" />
+            <span>Exportar Clientes com Saldo Devedor (.CSV)</span>
+          </button>
         </div>
       </div>
 

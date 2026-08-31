@@ -42,15 +42,16 @@ export function SellerAuthProvider({ children }: { children: React.ReactNode }) 
         const found = list.find((s) => s.id === storedId);
         if (found) {
           setActiveSeller(found);
-        } else if (list.length > 0) {
-          setActiveSeller(list[0]);
+        } else {
+          setActiveSeller(null);
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem(STORAGE_KEY);
+            localStorage.removeItem(LEGACY_STORAGE_KEY);
+          }
         }
-      } else if (list.length > 0) {
-        // Auto-select first seller for frictionless start
-        setActiveSeller(list[0]);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(STORAGE_KEY, list[0].id);
-        }
+      } else {
+        // No stored seller: require explicit login/selection
+        setActiveSeller(null);
       }
       setIsLoading(false);
     });

@@ -21,8 +21,11 @@ import { CustomersTab } from '@/components/CustomersTab';
 import { ProductsTab } from '@/components/ProductsTab';
 import { SettingsTab } from '@/components/SettingsTab';
 import { SaleDetailsModal } from '@/components/SaleDetailsModal';
+import { SellerSwitchModal } from '@/components/SellerSwitchModal';
+import { useSellerAuth } from '@/hooks/use-seller-auth';
 
 function MainAppContent() {
+  const { activeSeller, isLoading: isSellerAuthLoading } = useSellerAuth();
   const [activeTab, setActiveTab] = useState<TabType>('hoje');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -130,10 +133,20 @@ function MainAppContent() {
         {activeTab === 'config' && (
           <SettingsTab
             sellers={sellers}
+            sales={sales}
+            customers={customers}
             onOpenNewSale={() => setActiveTab('nova-venda')}
           />
         )}
       </main>
+
+      {/* Mandatory Seller Identification Modal */}
+      {!isSellerAuthLoading && !activeSeller && (
+        <SellerSwitchModal
+          isMandatory={true}
+          onClose={() => {}}
+        />
+      )}
 
       {/* Sale Details Modal */}
       {selectedSaleForDetails && (

@@ -413,6 +413,84 @@ export async function recordSale(
   return docRef.id;
 }
 
+export async function cancelSale(
+  businessId = DEFAULT_BUSINESS_ID,
+  saleId: string,
+  cancelledBySellerName: string,
+  reason?: string
+): Promise<void> {
+  await ensureAuthSession();
+  const sRef = doc(getSalesCol(businessId), saleId);
+  const sSnap = await getDoc(sRef);
+  if (!sSnap.exists()) {
+    throw new Error('Venda não encontrada');
+  }
+
+  const saleData = sSnap.data() as Sale;
+  if (saleData.isCancelled || saleData.paymentStatus === 'cancelled') {
+    throw new Error('Esta venda já está cancelada');
+  }
+
+  const nowIso = new Date().toISOString();
+
+  // 1. Mark Sale as cancelled
+  await updateDoc(sRef, cleanUndefined({
+    isCancelled: true,
+    paymentStatus: 'cancelled',
+    cancelledAt: nowIso,
+    cancelledBy: cancelledBySellerName || 'Dono',
+    cancellationReason: reason || 'Cancelada pelo responsável',
+  }));
+
+  // 2. Return quantities to product stock
+  if (saleData.items && saleData.items.length > 0) {
+    for (const item of saleData.items) {
+      try {
+        if (item.productId && item.productId !== 'sample') {
+          const pRef = doc(getProductsCol(businessId), item.productId);
+          const pSnap = await getDoc(pRef);
+          if (pSnap.exists()) {
+            const pData = pSnap.data() as Product;
+            const currentStock = Number(pData.stockQuantity !== undefined ? pData.stockQuantity : 0);
+            const returnedStock = currentStock + Number(item.quantity || 0);
+            await updateDoc(pRef, cleanUndefined({
+              stockQuantity: returnedStock,
+            }));
+          }
+        }
+      } catch (e) {
+        console.warn('Error restoring stock on sale cancel:', e);
+      }
+    }
+  }
+
+  // 3. If there was open debt (remainingAmount > 0) for a customer, deduct from customer balance
+  if (saleData.customerId && saleData.customerId !== 'avulso') {
+    try {
+      const cRef = doc(getCustomersCol(businessId), saleData.customerId);
+      const cSnap = await getDoc(cRef);
+      if (cSnap.exists()) {
+        const cData = cSnap.data() as Customer;
+        const currentDebt = Number(cData.totalDebt || 0);
+        const currentPurchased = Number(cData.totalPurchased || 0);
+        const remainingToDeduct = Number(saleData.remainingAmount || 0);
+        const totalToDeduct = Number(saleData.totalAmount || 0);
+
+        const newDebt = Math.max(0, currentDebt - remainingToDeduct);
+        const newPurchased = Math.max(0, currentPurchased - totalToDeduct);
+
+        await updateDoc(cRef, cleanUndefined({
+          totalDebt: newDebt,
+          totalPurchased: newPurchased,
+          updatedAt: nowIso,
+        }));
+      }
+    } catch (e) {
+      console.warn('Error updating customer debt on sale cancel:', e);
+    }
+  }
+}
+
 // ----------------- PAYMENTS / FIADO SETTLEMENT -----------------
 
 export function subscribePayments(
