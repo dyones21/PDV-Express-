@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Product } from '@/types';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatCurrencyInput, parseCurrencyToNumber } from '@/lib/format';
 import { addProduct, updateProduct, restockProduct } from '@/lib/db';
 import { 
   Package, 
@@ -79,8 +79,8 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
   const handleOpenEdit = (p: Product) => {
     setEditingProduct(p);
     setName(p.name);
-    setPrice(p.price.toString());
-    setCostPrice(p.costPrice !== undefined ? p.costPrice.toString() : '');
+    setPrice(p.price !== undefined ? formatCurrencyInput(p.price) : '');
+    setCostPrice(p.costPrice !== undefined ? formatCurrencyInput(p.costPrice) : '');
     setStockQuantity(p.stockQuantity !== undefined ? p.stockQuantity.toString() : '0');
     setUnit(p.unit || 'un');
     setCategory(p.category || 'Geral');
@@ -91,8 +91,8 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
     e.preventDefault();
     if (!name.trim() || !price) return;
 
-    const parsedPrice = parseFloat(price.replace(',', '.')) || 0;
-    const parsedCost = costPrice ? parseFloat(costPrice.replace(',', '.')) || 0 : undefined;
+    const parsedPrice = parseCurrencyToNumber(price);
+    const parsedCost = costPrice ? parseCurrencyToNumber(costPrice) : undefined;
     const parsedStock = stockQuantity ? parseInt(stockQuantity, 10) || 0 : 0;
 
     if (parsedPrice <= 0) {
@@ -134,7 +134,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
   const handleOpenRestock = (p: Product) => {
     setRestockProductTarget(p);
     setRestockQty('');
-    setRestockCost(p.costPrice !== undefined ? p.costPrice.toString() : '');
+    setRestockCost(p.costPrice !== undefined ? formatCurrencyInput(p.costPrice) : '');
   };
 
   const handleSaveRestock = async (e: React.FormEvent) => {
@@ -147,7 +147,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
       return;
     }
 
-    const newCost = restockCost ? parseFloat(restockCost.replace(',', '.')) || undefined : undefined;
+    const newCost = restockCost ? parseCurrencyToNumber(restockCost) : undefined;
 
     try {
       setIsRestocking(true);
@@ -173,8 +173,8 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
   };
 
   // Calculation for margin reference in modal
-  const calcSalePrice = parseFloat(price.replace(',', '.')) || 0;
-  const calcCostPrice = parseFloat(costPrice.replace(',', '.')) || 0;
+  const calcSalePrice = parseCurrencyToNumber(price);
+  const calcCostPrice = parseCurrencyToNumber(costPrice);
   const calcProfit = calcSalePrice > 0 ? calcSalePrice - calcCostPrice : 0;
   const calcMarginPercent = calcSalePrice > 0 ? Math.round((calcProfit / calcSalePrice) * 100) : 0;
 
@@ -481,12 +481,12 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                   </label>
                   <input
                     id="input-prod-form-price"
-                    type="number"
-                    step="0.50"
+                    type="text"
+                    inputMode="numeric"
                     required
-                    placeholder="Ex: 38.00"
+                    placeholder="R$ 0,00"
                     value={price}
-                    onChange={(e) => setPrice(e.target.value)}
+                    onChange={(e) => setPrice(formatCurrencyInput(e.target.value))}
                     className="w-full px-3 py-2 text-sm font-bold text-amber-950 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500"
                   />
                 </div>
@@ -497,11 +497,11 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                   </label>
                   <input
                     id="input-prod-form-cost"
-                    type="number"
-                    step="0.50"
-                    placeholder="Ex: 22.00"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="R$ 0,00"
                     value={costPrice}
-                    onChange={(e) => setCostPrice(e.target.value)}
+                    onChange={(e) => setCostPrice(formatCurrencyInput(e.target.value))}
                     className="w-full px-3 py-2 text-sm font-semibold rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500"
                   />
                 </div>
@@ -650,11 +650,11 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                 </label>
                 <input
                   id="input-restock-cost"
-                  type="number"
-                  step="0.50"
-                  placeholder={restockProductTarget.costPrice ? `Atual: R$ ${restockProductTarget.costPrice.toFixed(2)}` : 'Ex: 22.50'}
+                  type="text"
+                  inputMode="numeric"
+                  placeholder={restockProductTarget.costPrice ? `Atual: ${formatCurrency(restockProductTarget.costPrice)}` : 'R$ 0,00'}
                   value={restockCost}
-                  onChange={(e) => setRestockCost(e.target.value)}
+                  onChange={(e) => setRestockCost(formatCurrencyInput(e.target.value))}
                   className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500"
                 />
                 <p className="text-[10px] text-neutral-500 mt-1">

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Customer, Sale } from '@/types';
-import { formatCurrency, formatDateBr, getTodayDateString } from '@/lib/format';
+import { formatCurrency, formatDateBr, getTodayDateString, formatPhone, formatCpf } from '@/lib/format';
 import { addCustomer, updateCustomer } from '@/lib/db';
 import { 
   Users, 
@@ -39,6 +39,7 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
   // Form State
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [cpf, setCpf] = useState('');
   const [address, setAddress] = useState('');
   const [referencePoint, setReferencePoint] = useState('');
   const [nextVisitReminder, setNextVisitReminder] = useState('');
@@ -53,6 +54,7 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
     return (
       c.name.toLowerCase().includes(term) ||
       (c.phone && c.phone.toLowerCase().includes(term)) ||
+      (c.cpf && c.cpf.replace(/\D/g, '').includes(term.replace(/\D/g, ''))) ||
       (c.address && c.address.toLowerCase().includes(term)) ||
       (c.referencePoint && c.referencePoint.toLowerCase().includes(term))
     );
@@ -61,6 +63,7 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
   const handleOpenNew = () => {
     setName('');
     setPhone('');
+    setCpf('');
     setAddress('');
     setReferencePoint('');
     setNextVisitReminder('');
@@ -71,7 +74,8 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
   const handleOpenEdit = (customer: Customer) => {
     setEditingCustomer(customer);
     setName(customer.name);
-    setPhone(customer.phone || '');
+    setPhone(customer.phone ? formatPhone(customer.phone) : '');
+    setCpf(customer.cpf ? formatCpf(customer.cpf) : '');
     setAddress(customer.address || '');
     setReferencePoint(customer.referencePoint || '');
     setNextVisitReminder(customer.nextVisitReminder || '');
@@ -105,6 +109,7 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
         await updateCustomer(undefined, editingCustomer.id, {
           name: name.trim(),
           phone: phone.trim() || undefined,
+          cpf: cpf.trim() || undefined,
           address: address.trim() || undefined,
           referencePoint: referencePoint.trim() || undefined,
           nextVisitReminder: nextVisitReminder.trim() || undefined,
@@ -115,6 +120,7 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
         await addCustomer(undefined, {
           name: name.trim(),
           phone: phone.trim() || undefined,
+          cpf: cpf.trim() || undefined,
           address: address.trim() || undefined,
           referencePoint: referencePoint.trim() || undefined,
           nextVisitReminder: nextVisitReminder.trim() || undefined,
@@ -255,12 +261,19 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
                       </div>
                     )}
 
-                    {customer.phone && (
-                      <div className="flex items-center gap-1.5 text-xs text-neutral-500 mt-0.5">
-                        <Phone className="w-3 h-3 text-neutral-400" />
-                        <span>{customer.phone}</span>
-                      </div>
-                    )}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5">
+                      {customer.phone && (
+                        <div className="flex items-center gap-1.5 text-xs text-neutral-500">
+                          <Phone className="w-3 h-3 text-neutral-400" />
+                          <span>{customer.phone}</span>
+                        </div>
+                      )}
+                      {customer.cpf && (
+                        <span className="text-[11px] text-neutral-400 font-medium">
+                          CPF: {customer.cpf}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Actions (Edit & Toggle Active) */}
@@ -401,10 +414,26 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
                 </label>
                 <input
                   id="input-customer-phone"
-                  type="tel"
+                  type="text"
+                  inputMode="numeric"
                   placeholder="(11) 98765-4321"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => setPhone(formatPhone(e.target.value))}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                  CPF (opcional)
+                </label>
+                <input
+                  id="input-customer-cpf"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="000.000.000-00"
+                  value={cpf}
+                  onChange={(e) => setCpf(formatCpf(e.target.value))}
                   className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500 focus:outline-none"
                 />
               </div>

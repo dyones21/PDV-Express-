@@ -19,6 +19,7 @@ export interface Customer {
   id: string;
   name: string;
   phone?: string;
+  cpf?: string;
   address?: string;
   referencePoint?: string;
   active?: boolean;

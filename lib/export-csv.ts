@@ -100,7 +100,7 @@ export function exportSalesCsv(
 
   const csvContent = [headers.join(';'), ...rows].join('\r\n');
   const todayStr = new Date().toISOString().split('T')[0];
-  triggerCsvDownload(csvContent, `vendas_pdv_queijo_${todayStr}.csv`);
+  triggerCsvDownload(csvContent, `vendas_pdv_${todayStr}.csv`);
 }
 
 export function exportDebtorsCsv(customers: Customer[], sales: Sale[]) {

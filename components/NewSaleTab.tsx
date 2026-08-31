@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Customer, Product, SaleItem, PaymentStatus, PaymentMethod } from '@/types';
-import { formatCurrency, getTodayDateString } from '@/lib/format';
+import { formatCurrency, formatCurrencyInput, parseCurrencyToNumber, formatPhone, getTodayDateString } from '@/lib/format';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
 import { recordSale, addCustomer } from '@/lib/db';
 import { 
@@ -145,7 +145,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
     paymentStatus = 'pending';
   } else {
     // Partial
-    const parsedPartial = parseFloat(partialPaidInput.replace(',', '.')) || 0;
+    const parsedPartial = parseCurrencyToNumber(partialPaidInput);
     paidAmount = Math.min(calculatedTotal, Math.max(0, parsedPartial));
     remainingAmount = Math.max(0, calculatedTotal - paidAmount);
     paymentStatus = remainingAmount === 0 ? 'paid' : 'partial';
@@ -613,11 +613,11 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
             </label>
             <input
               id="input-partial-paid"
-              type="number"
-              step="0.50"
-              placeholder="Ex: 20,00"
+              type="text"
+              inputMode="numeric"
+              placeholder="R$ 0,00"
               value={partialPaidInput}
-              onChange={(e) => setPartialPaidInput(e.target.value)}
+              onChange={(e) => setPartialPaidInput(formatCurrencyInput(e.target.value))}
               className="w-full px-3 py-2 bg-white rounded-xl border border-amber-300 font-bold text-base text-neutral-900 focus:ring-2 focus:ring-amber-500 focus:outline-none"
             />
             <div className="flex justify-between text-xs font-semibold text-amber-950 pt-1">
@@ -705,10 +705,11 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
                 </label>
                 <input
                   id="input-new-cust-phone"
-                  type="tel"
+                  type="text"
+                  inputMode="numeric"
                   placeholder="(11) 99999-9999"
                   value={newCustPhone}
-                  onChange={(e) => setNewCustPhone(e.target.value)}
+                  onChange={(e) => setNewCustPhone(formatPhone(e.target.value))}
                   className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
                 />
               </div>

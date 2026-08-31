@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Customer, Sale, PaymentMethod } from '@/types';
-import { formatCurrency, formatDateBr, getTodayDateString } from '@/lib/format';
+import { formatCurrency, formatCurrencyInput, parseCurrencyToNumber, formatDateBr, getTodayDateString } from '@/lib/format';
 import { recordPayment } from '@/lib/db';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
 import { 
@@ -69,7 +69,7 @@ export function DebtorsTab({ customers, sales }: DebtorsTabProps) {
   const handleOpenSettle = (customer: Customer) => {
     setSettleCustomer(customer);
     setSettleAmountType('total');
-    setCustomAmountInput(customer.totalDebt?.toString() || '');
+    setCustomAmountInput(customer.totalDebt ? formatCurrencyInput(customer.totalDebt) : '');
     setPaymentMethod('dinheiro');
     setNotes('');
   };
@@ -81,7 +81,7 @@ export function DebtorsTab({ customers, sales }: DebtorsTabProps) {
     const amountToPay =
       settleAmountType === 'total'
         ? Number(settleCustomer.totalDebt || 0)
-        : parseFloat(customAmountInput.replace(',', '.')) || 0;
+        : parseCurrencyToNumber(customAmountInput);
 
     if (amountToPay <= 0) {
       alert('Informe um valor válido maior que zero.');
@@ -380,12 +380,12 @@ export function DebtorsTab({ customers, sales }: DebtorsTabProps) {
                 {settleAmountType === 'partial' && (
                   <input
                     id="input-settle-custom-amount"
-                    type="number"
-                    step="0.50"
+                    type="text"
+                    inputMode="numeric"
                     required
-                    placeholder="Digite quanto o cliente pagou..."
+                    placeholder="R$ 0,00"
                     value={customAmountInput}
-                    onChange={(e) => setCustomAmountInput(e.target.value)}
+                    onChange={(e) => setCustomAmountInput(formatCurrencyInput(e.target.value))}
                     className="w-full px-3 py-2 text-sm font-bold rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500 focus:outline-none"
                   />
                 )}
