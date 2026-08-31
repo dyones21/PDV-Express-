@@ -17,7 +17,9 @@ import {
   ShieldCheck, 
   ShoppingBag,
   Ban,
-  AlertTriangle
+  AlertTriangle,
+  ExternalLink,
+  Navigation
 } from 'lucide-react';
 
 interface SaleDetailsModalProps {
@@ -213,10 +215,32 @@ export function SaleDetailsModal({ sale, onClose }: SaleDetailsModalProps) {
             </div>
           </div>
 
-          {/* Operator */}
-          <div className="flex justify-between text-[11px] text-neutral-500 px-1">
-            <span>Registrado por: <strong>{sale.sellerName}</strong></span>
-            <span>Data: {formatDateBr(sale.saleDate)}</span>
+          {/* Operator & Location */}
+          <div className="flex flex-col gap-1.5 text-[11px] text-neutral-500 px-1">
+            <div className="flex justify-between">
+              <span>Registrado por: <strong>{sale.sellerName}</strong></span>
+              <span>Data: {formatDateBr(sale.saleDate)}</span>
+            </div>
+
+            {sale.latitude !== undefined && sale.longitude !== undefined && (
+              <div className="pt-1 border-t border-neutral-100 flex items-center justify-between">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <MapPin className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Localização GPS capturada</span>
+                </div>
+                <a
+                  id="link-sale-maps-location"
+                  href={`https://www.google.com/maps?q=${sale.latitude},${sale.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold rounded-lg transition active:scale-95 text-[10px]"
+                >
+                  <Navigation className="w-3 h-3 text-amber-700" />
+                  <span>Ver no mapa</span>
+                  <ExternalLink className="w-2.5 h-2.5 ml-0.5 text-amber-700" />
+                </a>
+              </div>
+            )}
           </div>
 
           {sale.notes && (
@@ -233,7 +257,7 @@ export function SaleDetailsModal({ sale, onClose }: SaleDetailsModalProps) {
                 <div>
                   <p className="font-bold text-red-900 text-xs">Confirmar cancelamento da venda?</p>
                   <p className="text-[11px] text-red-700 mt-0.5">
-                    O estoque de todos os queijos desta venda será reposto automaticamente e a dívida do cliente será estornada.
+                    O estoque de todos os produtos desta venda será reposto automaticamente e a dívida do cliente será estornada.
                   </p>
                 </div>
               </div>

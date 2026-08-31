@@ -20,6 +20,7 @@ import { HistoryTab } from '@/components/HistoryTab';
 import { CustomersTab } from '@/components/CustomersTab';
 import { ProductsTab } from '@/components/ProductsTab';
 import { SettingsTab } from '@/components/SettingsTab';
+import { ReportsTab } from '@/components/ReportsTab';
 import { SaleDetailsModal } from '@/components/SaleDetailsModal';
 import { SellerSwitchModal } from '@/components/SellerSwitchModal';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
@@ -91,6 +92,7 @@ function MainAppContent() {
             onOpenDebtors={() => setActiveTab('a-receber')}
             onOpenSaleDetails={(sale) => setSelectedSaleForDetails(sale)}
             onOpenSettings={() => setActiveTab('config')}
+            onOpenReports={() => setActiveTab('relatorios')}
           />
         )}
 
@@ -104,6 +106,16 @@ function MainAppContent() {
 
         {activeTab === 'a-receber' && (
           <DebtorsTab customers={customers} sales={sales} />
+        )}
+
+        {activeTab === 'relatorios' && (
+          <ReportsTab
+            sales={sales}
+            payments={payments}
+            sellers={sellers}
+            customers={customers}
+            products={products}
+          />
         )}
 
         {activeTab === 'produtos' && (

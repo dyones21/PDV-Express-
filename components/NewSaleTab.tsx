@@ -116,8 +116,11 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
 
   const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
 
+  // Filtered active customers for search (inactive customers should not appear in new sale selection)
+  const activeCustomers = customers.filter((c) => c.active !== false);
+
   // Filtered customers for search
-  const filteredCustomers = customers.filter((c) => {
+  const filteredCustomers = activeCustomers.filter((c) => {
     if (!customerSearch.trim()) return true;
     const term = customerSearch.toLowerCase();
     return (
@@ -148,6 +151,34 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
     paymentStatus = remainingAmount === 0 ? 'paid' : 'partial';
   }
 
+  const getDeviceLocation = (): Promise<{ latitude?: number; longitude?: number }> => {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined' || !navigator.geolocation) {
+        resolve({});
+        return;
+      }
+      const timeoutId = setTimeout(() => {
+        resolve({});
+      }, 8000); // 8 seconds max
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          clearTimeout(timeoutId);
+          resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+        },
+        (error) => {
+          clearTimeout(timeoutId);
+          console.warn('GPS não capturado (não bloqueante):', error);
+          resolve({});
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+      );
+    });
+  };
+
   const handleSubmitSale = async () => {
     if (selectedItems.length === 0) {
       alert('Selecione pelo menos um produto para a venda.');
@@ -166,6 +197,9 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
         ? 'Cliente Avulso (Rua)'
         : selectedCustomer?.name || 'Cliente';
 
+      // Capture GPS location if available (non-blocking with 8s timeout)
+      const locationCoords = await getDeviceLocation();
+
       const saleData = {
         customerId: isAnonymous ? null : selectedCustomerId,
         customerName,
@@ -182,6 +216,8 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
         paymentMethod: paymentOption === 'pending_full' ? 'dinheiro' : paymentMethod,
         notes: notes.trim() || undefined,
         saleDate: getTodayDateString(),
+        latitude: locationCoords.latitude,
+        longitude: locationCoords.longitude,
       };
 
       const saleId = await recordSale(undefined, saleData);
@@ -284,17 +320,20 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
             </div>
           </button>
 
-          {/* Selected registered customer preview button */}
-          <div
-            className={`p-3 rounded-xl border text-left flex items-center gap-2.5 ${
-              !isAnonymous && selectedCustomerId
+          {/* Selected registered customer preview button (clickable) */}
+          <button
+            id="btn-client-registered"
+            type="button"
+            onClick={() => setIsAnonymous(false)}
+            className={`p-3 rounded-xl border text-left flex items-center gap-2.5 transition active:scale-95 ${
+              !isAnonymous
                 ? 'border-amber-600 bg-amber-50 text-amber-950 font-bold ring-2 ring-amber-500/20'
-                : 'border-neutral-200 bg-neutral-50/60 text-neutral-400'
+                : 'border-neutral-200 bg-neutral-50/60 text-neutral-700 hover:bg-neutral-100'
             }`}
           >
             <div
               className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                !isAnonymous && selectedCustomerId ? 'bg-amber-700 text-white' : 'bg-neutral-200 text-neutral-400'
+                !isAnonymous ? 'bg-amber-700 text-white' : 'bg-neutral-200 text-neutral-600'
               }`}
             >
               👤
@@ -307,7 +346,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
                 {!isAnonymous && selectedCustomer?.referencePoint ? selectedCustomer.referencePoint : 'Cadastrado'}
               </div>
             </div>
-          </div>
+          </button>
         </div>
 
         {/* Customer Search / Selection List */}

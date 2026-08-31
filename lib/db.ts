@@ -226,6 +226,7 @@ export async function addCustomer(
 ): Promise<string> {
   await ensureAuthSession();
   const docRef = await addDoc(getCustomersCol(businessId), cleanUndefined({
+    active: true,
     ...customerData,
     totalDebt: 0,
     totalPurchased: 0,

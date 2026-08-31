@@ -21,6 +21,8 @@ export interface Customer {
   phone?: string;
   address?: string;
   referencePoint?: string;
+  active?: boolean;
+  nextVisitReminder?: string; // YYYY-MM-DD
   totalDebt?: number;
   totalPurchased?: number;
   lastPurchaseDate?: string;
@@ -71,6 +73,8 @@ export interface Sale {
   saleDate: string; // YYYY-MM-DD
   createdAt: string; // ISO String
   hasPendingWrites?: boolean; // Firestore offline sync status
+  latitude?: number;
+  longitude?: number;
   isCancelled?: boolean;
   cancelledAt?: string;
   cancelledBy?: string;

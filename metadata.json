@@ -1,6 +1,6 @@
 {
   "name": "PDV Express",
   "description": "App PWA offline-first para controle de vendas, estoque, clientes e fiado para autônomos e MEI.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

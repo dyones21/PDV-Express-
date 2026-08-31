@@ -1,9 +1,9 @@
 'use client';
 
 import React from 'react';
-import { Home, PlusCircle, HandCoins, History, Users, Package, Settings } from 'lucide-react';
+import { Home, PlusCircle, HandCoins, History, Users, Package, BarChart3 } from 'lucide-react';
 
-export type TabType = 'hoje' | 'nova-venda' | 'a-receber' | 'produtos' | 'clientes' | 'historico' | 'config';
+export type TabType = 'hoje' | 'nova-venda' | 'a-receber' | 'produtos' | 'clientes' | 'historico' | 'relatorios' | 'config';
 
 interface BottomNavProps {
   activeTab: TabType;
@@ -15,9 +15,10 @@ export function BottomNav({ activeTab, onChangeTab, pendingDebtorsCount = 0 }: B
   const tabs = [
     { id: 'hoje' as TabType, label: 'Hoje', icon: Home },
     { id: 'a-receber' as TabType, label: 'A Receber', icon: HandCoins, badge: pendingDebtorsCount },
-    { id: 'nova-venda' as TabType, label: 'Vender', icon: PlusCircle, isPrimary: true },
     { id: 'produtos' as TabType, label: 'Produtos', icon: Package },
+    { id: 'nova-venda' as TabType, label: 'Vender', icon: PlusCircle, isPrimary: true },
     { id: 'clientes' as TabType, label: 'Clientes', icon: Users },
+    { id: 'relatorios' as TabType, label: 'Relatórios', icon: BarChart3 },
     { id: 'historico' as TabType, label: 'Histórico', icon: History },
   ];
 
@@ -34,19 +35,19 @@ export function BottomNav({ activeTab, onChangeTab, pendingDebtorsCount = 0 }: B
                 key={tab.id}
                 id="tab-btn-nova-venda"
                 onClick={() => onChangeTab(tab.id)}
-                className="relative -top-4 flex flex-col items-center group focus:outline-none px-1"
+                className="relative -top-3 flex flex-col items-center group focus:outline-none px-1"
               >
                 <div
-                  className={`w-13 h-13 rounded-full flex items-center justify-center shadow-lg transition-all transform active:scale-95 ${
+                  className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-all transform active:scale-95 ${
                     isActive
                       ? 'bg-amber-800 ring-4 ring-amber-300 text-white scale-105'
                       : 'bg-amber-600 hover:bg-amber-700 text-white ring-4 ring-amber-100'
                   }`}
                 >
-                  <PlusCircle className="w-7 h-7 stroke-[2.5]" />
+                  <PlusCircle className="w-6 h-6 stroke-[2.5]" />
                 </div>
                 <span
-                  className={`text-[10px] font-extrabold mt-0.5 ${
+                  className={`text-[9.5px] font-extrabold mt-0.5 ${
                     isActive ? 'text-amber-800' : 'text-neutral-600'
                   }`}
                 >
@@ -68,14 +69,14 @@ export function BottomNav({ activeTab, onChangeTab, pendingDebtorsCount = 0 }: B
               <div className="relative">
                 <Icon className={`w-4.5 h-4.5 ${isActive ? 'stroke-[2.5]' : 'stroke-2'}`} />
                 {!!tab.badge && tab.badge > 0 && (
-                  <span className="absolute -top-1.5 -right-2.5 bg-amber-600 text-white text-[9px] font-extrabold w-4 h-4 rounded-full flex items-center justify-center shadow-sm">
+                  <span className="absolute -top-1.5 -right-2 bg-amber-600 text-white text-[9px] font-extrabold w-4 h-4 rounded-full flex items-center justify-center shadow-sm">
                     {tab.badge > 9 ? '9+' : tab.badge}
                   </span>
                 )}
               </div>
-              <span className="text-[9.5px] mt-1 tracking-tight truncate max-w-[54px]">{tab.label}</span>
+              <span className="text-[9px] mt-0.5 tracking-tight truncate max-w-[48px]">{tab.label}</span>
               {isActive && (
-                <div className="w-3.5 h-0.5 bg-amber-700 rounded-full mt-0.5" />
+                <div className="w-3 h-0.5 bg-amber-700 rounded-full mt-0.5" />
               )}
             </button>
           );
@@ -84,3 +85,4 @@ export function BottomNav({ activeTab, onChangeTab, pendingDebtorsCount = 0 }: B
     </nav>
   );
 }
+

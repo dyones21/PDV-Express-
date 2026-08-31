@@ -112,7 +112,7 @@ export function HistoryTab({
       <div className="px-1">
         <h2 className="text-lg font-bold text-neutral-900 leading-tight flex items-center gap-2">
           <HistoryIcon className="w-5 h-5 text-amber-700" />
-          <span>Histórico & Relatório de Vendas</span>
+          <span>Histórico de Vendas</span>
         </h2>
         <p className="text-xs text-neutral-500 font-medium">
           Consolidado por dia e períodos da rota

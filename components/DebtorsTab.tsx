@@ -110,16 +110,17 @@ export function DebtorsTab({ customers, sales }: DebtorsTabProps) {
   };
 
   const handleWhatsAppCobrar = (customer: Customer) => {
+    if (!customer.phone) return;
+    const phone = customer.phone.replace(/\D/g, '');
+    if (!phone) return;
+
     const text = `📋 *Lembrete de Pagamento*\n\n` +
       `Olá, *${customer.name}*! Tudo bem?\n` +
-      `Estou passando na rota hoje e conferindo os acertos pendentes.\n` +
+      `Estou passando na rota conferindo os acertos pendentes.\n` +
       `Consta em aberto o valor de *${formatCurrency(customer.totalDebt)}* de compras anteriores.\n\n` +
-      `Podemos combinar o acerto hoje? Agradeço muito! 🙏`;
+      `Podemos combinar o acerto hoje ou prefere via PIX? Agradeço muito! 🙏`;
 
-    const phone = customer.phone ? customer.phone.replace(/\D/g, '') : '';
-    const url = phone
-      ? `https://wa.me/55${phone}?text=${encodeURIComponent(text)}`
-      : `https://wa.me/?text=${encodeURIComponent(text)}`;
+    const url = `https://wa.me/55${phone}?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
   };
 
@@ -230,16 +231,30 @@ export function DebtorsTab({ customers, sales }: DebtorsTabProps) {
                     </button>
 
                     {/* WhatsApp Cobrança Button */}
-                    <button
-                      id={`btn-whatsapp-${customer.id}`}
-                      type="button"
-                      onClick={() => handleWhatsAppCobrar(customer)}
-                      className="py-2.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold text-xs rounded-xl transition active:scale-95 flex items-center gap-1"
-                      title="Chamar no WhatsApp com mensagem de lembrete"
-                    >
-                      <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
-                      <span className="hidden xs:inline">Cobrar</span>
-                    </button>
+                    {customer.phone ? (
+                      <button
+                        id={`btn-whatsapp-${customer.id}`}
+                        type="button"
+                        onClick={() => handleWhatsAppCobrar(customer)}
+                        className="py-2.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs rounded-xl transition active:scale-95 flex items-center gap-1.5"
+                        title="Cobrar no WhatsApp"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                        <span className="hidden sm:inline">Cobrar no WhatsApp</span>
+                        <span className="sm:hidden">Cobrar</span>
+                      </button>
+                    ) : (
+                      <button
+                        id={`btn-whatsapp-disabled-${customer.id}`}
+                        type="button"
+                        disabled
+                        title="Cadastre o telefone do cliente para cobrar via WhatsApp"
+                        className="py-2.5 px-2.5 bg-neutral-100 text-neutral-400 border border-neutral-200 font-medium text-xs rounded-xl flex items-center gap-1 cursor-not-allowed opacity-75"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5 text-neutral-400 flex-shrink-0" />
+                        <span>Sem Tel</span>
+                      </button>
+                    )}
 
                     {/* Toggle Sales Details */}
                     {customerSales.length > 0 && (

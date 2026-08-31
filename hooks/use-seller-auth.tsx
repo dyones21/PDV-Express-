@@ -9,6 +9,7 @@ import { DEFAULT_BUSINESS_ID } from '@/lib/firebase';
 interface SellerAuthContextType {
   sellers: Seller[];
   activeSeller: Seller | null;
+  isOwner: boolean;
   isLoading: boolean;
   loginWithPin: (sellerId: string, pin: string) => Promise<{ success: boolean; error?: string }>;
   quickSelectSeller: (seller: Seller) => void;
@@ -110,6 +111,7 @@ export function SellerAuthProvider({ children }: { children: React.ReactNode }) 
       value={{
         sellers,
         activeSeller,
+        isOwner: activeSeller?.role === 'owner',
         isLoading,
         loginWithPin,
         quickSelectSeller,

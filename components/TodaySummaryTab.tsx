@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Sale, Customer } from '@/types';
-import { formatCurrency, getTodayDateString, formatDateBr } from '@/lib/format';
+import { formatCurrency, getTodayDateString, getTodayFormattedDisplay, formatDateBr } from '@/lib/format';
 import { 
   TrendingUp, 
   CheckCircle2, 
@@ -16,7 +16,8 @@ import {
   CloudCheck,
   CloudUpload,
   Settings,
-  ChevronRight
+  ChevronRight,
+  BarChart3
 } from 'lucide-react';
 
 interface TodaySummaryTabProps {
@@ -26,6 +27,7 @@ interface TodaySummaryTabProps {
   onOpenDebtors: () => void;
   onOpenSaleDetails: (sale: Sale) => void;
   onOpenSettings: () => void;
+  onOpenReports?: () => void;
 }
 
 export function TodaySummaryTab({
@@ -35,6 +37,7 @@ export function TodaySummaryTab({
   onOpenDebtors,
   onOpenSaleDetails,
   onOpenSettings,
+  onOpenReports,
 }: TodaySummaryTabProps) {
   const todayStr = getTodayDateString();
 
@@ -60,22 +63,31 @@ export function TodaySummaryTab({
           <span className="text-xs font-semibold text-amber-800 uppercase tracking-wider">
             Resumo de Hoje
           </span>
-          <h2 className="text-lg font-bold text-neutral-900 leading-tight">
-            {new Date().toLocaleDateString('pt-BR', {
-              weekday: 'long',
-              day: 'numeric',
-              month: 'long',
-            })}
+          <h2 className="text-lg font-bold text-neutral-900 leading-tight capitalize" suppressHydrationWarning>
+            {getTodayFormattedDisplay()}
           </h2>
         </div>
-        <button
-          id="btn-open-settings-top"
-          onClick={onOpenSettings}
-          className="p-2 rounded-xl bg-white border border-amber-200/80 text-neutral-600 hover:text-amber-800 shadow-sm active:scale-95 transition"
-          title="Ajustes e Produtos"
-        >
-          <Settings className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1.5">
+          {onOpenReports && (
+            <button
+              id="btn-open-reports-top"
+              onClick={onOpenReports}
+              className="py-1.5 px-2.5 rounded-xl bg-amber-100/80 border border-amber-300 text-amber-900 hover:bg-amber-200 shadow-sm active:scale-95 transition text-xs font-bold flex items-center gap-1"
+              title="Ver Relatórios do Dono"
+            >
+              <BarChart3 className="w-3.5 h-3.5 text-amber-700" />
+              <span>Relatórios</span>
+            </button>
+          )}
+          <button
+            id="btn-open-settings-top"
+            onClick={onOpenSettings}
+            className="p-2 rounded-xl bg-white border border-amber-200/80 text-neutral-600 hover:text-amber-800 shadow-sm active:scale-95 transition"
+            title="Ajustes e Produtos"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* 3 Main Highlights Cards */}

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Customer, Sale } from '@/types';
-import { formatCurrency, formatDateBr } from '@/lib/format';
+import { formatCurrency, formatDateBr, getTodayDateString } from '@/lib/format';
 import { addCustomer, updateCustomer } from '@/lib/db';
 import { 
   Users, 
@@ -15,7 +15,13 @@ import {
   X, 
   Check,
   ShoppingBag,
-  Clock
+  Clock,
+  Calendar,
+  CalendarClock,
+  AlertTriangle,
+  UserCheck,
+  UserX,
+  Power
 } from 'lucide-react';
 
 interface CustomersTabProps {
@@ -35,7 +41,11 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [referencePoint, setReferencePoint] = useState('');
+  const [nextVisitReminder, setNextVisitReminder] = useState('');
+  const [active, setActive] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const todayStr = getTodayDateString();
 
   const filteredCustomers = customers.filter((c) => {
     if (!searchTerm.trim()) return true;
@@ -53,6 +63,8 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
     setPhone('');
     setAddress('');
     setReferencePoint('');
+    setNextVisitReminder('');
+    setActive(true);
     setIsNewModalOpen(true);
   };
 
@@ -62,6 +74,25 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
     setPhone(customer.phone || '');
     setAddress(customer.address || '');
     setReferencePoint(customer.referencePoint || '');
+    setNextVisitReminder(customer.nextVisitReminder || '');
+    setActive(customer.active !== false);
+  };
+
+  const handleToggleCustomerActive = async (customer: Customer) => {
+    const nextState = customer.active === false ? true : false;
+    const confirmMessage = nextState
+      ? `Deseja reativar o cliente "${customer.name}"? Ele voltará a aparecer na lista de novas vendas.`
+      : `Deseja inativar o cliente "${customer.name}"? Ele não aparecerá mais na lista de novas vendas (o histórico e fiados serão mantidos).`;
+    
+    if (confirm(confirmMessage)) {
+      try {
+        await updateCustomer(undefined, customer.id, {
+          active: nextState,
+        });
+      } catch (err: any) {
+        alert('Erro ao atualizar status do cliente: ' + err.message);
+      }
+    }
   };
 
   const handleSaveCustomer = async (e: React.FormEvent) => {
@@ -76,6 +107,8 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
           phone: phone.trim() || undefined,
           address: address.trim() || undefined,
           referencePoint: referencePoint.trim() || undefined,
+          nextVisitReminder: nextVisitReminder.trim() || undefined,
+          active,
         });
         setEditingCustomer(null);
       } else {
@@ -84,6 +117,8 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
           phone: phone.trim() || undefined,
           address: address.trim() || undefined,
           referencePoint: referencePoint.trim() || undefined,
+          nextVisitReminder: nextVisitReminder.trim() || undefined,
+          active: true,
         });
         setIsNewModalOpen(false);
       }
@@ -149,25 +184,67 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
           filteredCustomers.map((customer) => {
             const customerSalesCount = sales.filter((s) => s.customerId === customer.id).length;
             const hasDebt = (customer.totalDebt || 0) > 0;
+            const isInactive = customer.active === false;
+
+            // Visit Reminder calculation
+            const reminderDate = customer.nextVisitReminder;
+            const isVisitToday = reminderDate && reminderDate === todayStr;
+            const isVisitOverdue = reminderDate && reminderDate < todayStr;
+            const isVisitUpcoming = reminderDate && reminderDate > todayStr;
 
             return (
               <div
                 key={customer.id}
                 id={`customer-card-${customer.id}`}
-                className="bg-white rounded-2xl border border-neutral-200/80 p-3.5 shadow-sm hover:border-amber-300 transition"
+                className={`rounded-2xl border p-3.5 shadow-sm transition ${
+                  isInactive
+                    ? 'bg-neutral-50/80 border-neutral-200 opacity-80'
+                    : 'bg-white border-neutral-200/80 hover:border-amber-300'
+                }`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-sm text-neutral-900 truncate">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <h3 className={`font-bold text-sm truncate ${isInactive ? 'text-neutral-600 line-through' : 'text-neutral-900'}`}>
                         {customer.name}
                       </h3>
+
+                      {isInactive && (
+                        <span className="text-[10px] font-bold text-neutral-600 bg-neutral-200/80 px-2 py-0.5 rounded-full">
+                          Inativo
+                        </span>
+                      )}
+
                       {hasDebt && (
                         <span className="text-[10px] font-extrabold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full">
                           Deve {formatCurrency(customer.totalDebt)}
                         </span>
                       )}
                     </div>
+
+                    {/* Visit Reminder Tag */}
+                    {reminderDate && (
+                      <div className="mt-1 flex items-center">
+                        {isVisitToday && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-lg animate-pulse">
+                            <CalendarClock className="w-3 h-3 text-amber-700" />
+                            <span>🔔 Visitar hoje!</span>
+                          </span>
+                        )}
+                        {isVisitOverdue && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-lg">
+                            <AlertTriangle className="w-3 h-3 text-red-600" />
+                            <span>Visita atrasada ({formatDateBr(reminderDate)})</span>
+                          </span>
+                        )}
+                        {isVisitUpcoming && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-800 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-lg">
+                            <Calendar className="w-3 h-3 text-sky-600" />
+                            <span>Visita: {formatDateBr(reminderDate)}</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {(customer.referencePoint || customer.address) && (
                       <div className="flex items-center gap-1.5 text-xs text-neutral-600 mt-1">
@@ -186,16 +263,32 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
                     )}
                   </div>
 
-                  {/* Edit button */}
-                  <button
-                    id={`btn-edit-customer-${customer.id}`}
-                    type="button"
-                    onClick={() => handleOpenEdit(customer)}
-                    className="p-2 text-neutral-400 hover:text-amber-800 hover:bg-neutral-50 rounded-lg transition"
-                    title="Editar dados"
-                  >
-                    <Edit3 className="w-4 h-4" />
-                  </button>
+                  {/* Actions (Edit & Toggle Active) */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      id={`btn-toggle-active-${customer.id}`}
+                      type="button"
+                      onClick={() => handleToggleCustomerActive(customer)}
+                      className={`p-1.5 rounded-lg transition text-xs font-semibold ${
+                        isInactive
+                          ? 'text-emerald-700 hover:bg-emerald-50'
+                          : 'text-neutral-400 hover:text-red-700 hover:bg-red-50'
+                      }`}
+                      title={isInactive ? 'Reativar cliente' : 'Inativar cliente'}
+                    >
+                      <Power className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      id={`btn-edit-customer-${customer.id}`}
+                      type="button"
+                      onClick={() => handleOpenEdit(customer)}
+                      className="p-1.5 text-neutral-400 hover:text-amber-800 hover:bg-neutral-50 rounded-lg transition"
+                      title="Editar dados"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Bottom bar with action buttons */}
@@ -209,7 +302,17 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
                     <span>{customerSalesCount} {customerSalesCount === 1 ? 'compra' : 'compras'}</span>
                   </button>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
+                    {isInactive && (
+                      <button
+                        type="button"
+                        onClick={() => handleToggleCustomerActive(customer)}
+                        className="py-1 px-2 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition"
+                      >
+                        Reativar
+                      </button>
+                    )}
+
                     {customer.phone && (
                       <button
                         type="button"
@@ -306,6 +409,91 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
                 />
               </div>
 
+              {/* Lembrete de Próxima Visita */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-neutral-700">
+                    Lembrete de Próxima Visita (Opcional)
+                  </label>
+                  {nextVisitReminder && (
+                    <button
+                      type="button"
+                      onClick={() => setNextVisitReminder('')}
+                      className="text-[10px] text-red-600 hover:underline font-semibold"
+                    >
+                      Limpar data
+                    </button>
+                  )}
+                </div>
+                <input
+                  id="input-customer-visit-reminder"
+                  type="date"
+                  value={nextVisitReminder}
+                  onChange={(e) => setNextVisitReminder(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500 focus:outline-none text-neutral-800"
+                />
+                <div className="flex gap-1.5 mt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setNextVisitReminder(todayStr)}
+                    className="py-1 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg text-[10px] font-semibold border border-amber-200"
+                  >
+                    Hoje
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date();
+                      d.setDate(d.getDate() + 7);
+                      const y = d.getFullYear();
+                      const m = String(d.getMonth() + 1).padStart(2, '0');
+                      const day = String(d.getDate()).padStart(2, '0');
+                      setNextVisitReminder(`${y}-${m}-${day}`);
+                    }}
+                    className="py-1 px-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-lg text-[10px] font-semibold border border-neutral-200"
+                  >
+                    +7 dias
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date();
+                      d.setDate(d.getDate() + 14);
+                      const y = d.getFullYear();
+                      const m = String(d.getMonth() + 1).padStart(2, '0');
+                      const day = String(d.getDate()).padStart(2, '0');
+                      setNextVisitReminder(`${y}-${m}-${day}`);
+                    }}
+                    className="py-1 px-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-lg text-[10px] font-semibold border border-neutral-200"
+                  >
+                    +14 dias
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Ativo / Inativo (No modo de edição) */}
+              {editingCustomer && (
+                <div className="pt-2 border-t border-neutral-200 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-neutral-800 block">Status do Cliente</span>
+                    <span className="text-[10px] text-neutral-500">
+                      {active ? 'Ativo na rota de vendas' : 'Inativo (oculto no PDV)'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActive(!active)}
+                    className={`py-1.5 px-3 rounded-xl font-bold text-xs transition ${
+                      active
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : 'bg-neutral-100 text-neutral-600 border border-neutral-300'
+                    }`}
+                  >
+                    {active ? 'Ativo' : 'Inativo'}
+                  </button>
+                </div>
+              )}
+
               <div className="pt-2 flex gap-2">
                 <button
                   type="button"
@@ -393,10 +581,18 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersT
                           </div>
                           <div
                             className={`text-[10px] font-bold ${
-                              s.paymentStatus === 'paid' ? 'text-emerald-700' : 'text-amber-800'
+                              s.isCancelled
+                                ? 'text-red-600 line-through'
+                                : s.paymentStatus === 'paid'
+                                ? 'text-emerald-700'
+                                : 'text-amber-800'
                             }`}
                           >
-                            {s.paymentStatus === 'paid' ? 'Pago' : 'Fiado'}
+                            {s.isCancelled
+                              ? 'Cancelada'
+                              : s.paymentStatus === 'paid'
+                              ? 'Pago'
+                              : 'Fiado'}
                           </div>
                         </div>
                       </div>
