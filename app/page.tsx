@@ -105,7 +105,11 @@ function MainAppContent() {
         )}
 
         {activeTab === 'a-receber' && (
-          <DebtorsTab customers={customers} sales={sales} />
+          <DebtorsTab
+            customers={customers}
+            sales={sales}
+            onOpenSaleDetails={(sale) => setSelectedSaleForDetails(sale)}
+          />
         )}
 
         {activeTab === 'relatorios' && (

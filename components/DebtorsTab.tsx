@@ -24,9 +24,10 @@ import {
 interface DebtorsTabProps {
   customers: Customer[];
   sales: Sale[];
+  onOpenSaleDetails: (sale: Sale) => void;
 }
 
-export function DebtorsTab({ customers, sales }: DebtorsTabProps) {
+export function DebtorsTab({ customers, sales, onOpenSaleDetails }: DebtorsTabProps) {
   const { activeSeller } = useSellerAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null);
@@ -283,9 +284,11 @@ export function DebtorsTab({ customers, sales }: DebtorsTabProps) {
                       Vendas em Aberto deste Cliente:
                     </div>
                     {customerSales.map((s) => (
-                      <div
+                      <button
                         key={s.id}
-                        className="bg-white p-2.5 rounded-xl border border-amber-200 flex items-center justify-between"
+                        type="button"
+                        onClick={() => onOpenSaleDetails(s)}
+                        className="w-full text-left bg-white p-2.5 rounded-xl border border-amber-200 hover:border-amber-400 hover:shadow-sm active:scale-[0.99] transition flex items-center justify-between cursor-pointer"
                       >
                         <div>
                           <div className="font-semibold text-neutral-800">
@@ -305,7 +308,7 @@ export function DebtorsTab({ customers, sales }: DebtorsTabProps) {
                             Total: {formatCurrency(s.totalAmount)}
                           </div>
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
