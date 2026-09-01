@@ -41,7 +41,7 @@ export function SellerAuthProvider({ children }: { children: React.ReactNode }) 
         : null;
       if (storedId) {
         const found = list.find((s) => s.id === storedId);
-        if (found) {
+        if (found && found.active !== false) {
           setActiveSeller(found);
         } else {
           setActiveSeller(null);
@@ -62,8 +62,8 @@ export function SellerAuthProvider({ children }: { children: React.ReactNode }) 
 
   const loginWithPin = async (sellerId: string, pin: string) => {
     const seller = sellers.find((s) => s.id === sellerId);
-    if (!seller) {
-      return { success: false, error: 'Vendedor não encontrado' };
+    if (!seller || seller.active === false) {
+      return { success: false, error: 'Vendedor não encontrado ou inativo.' };
     }
 
     if (!seller.pinHash || !seller.pinSalt) {
@@ -88,6 +88,7 @@ export function SellerAuthProvider({ children }: { children: React.ReactNode }) 
   };
 
   const quickSelectSeller = (seller: Seller) => {
+    if (seller.active === false) return;
     setActiveSeller(seller);
     if (typeof window !== 'undefined') {
       localStorage.setItem(STORAGE_KEY, seller.id);

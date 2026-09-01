@@ -28,10 +28,18 @@ interface CustomersTabProps {
   customers: Customer[];
   sales: Sale[];
   onOpenSaleDetails: (sale: Sale) => void;
+  initialSearch?: string;
 }
 
-export function CustomersTab({ customers, sales, onOpenSaleDetails }: CustomersTabProps) {
-  const [searchTerm, setSearchTerm] = useState('');
+export function CustomersTab({ customers, sales, onOpenSaleDetails, initialSearch = '' }: CustomersTabProps) {
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
+  const [prevInitialSearch, setPrevInitialSearch] = useState(initialSearch);
+
+  if (initialSearch !== prevInitialSearch) {
+    setPrevInitialSearch(initialSearch);
+    setSearchTerm(initialSearch);
+  }
+
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [selectedHistoryCustomer, setSelectedHistoryCustomer] = useState<Customer | null>(null);

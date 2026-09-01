@@ -650,3 +650,13 @@ export async function addSeller(
   return docRef.id;
 }
 
+export async function updateSeller(
+  businessId = DEFAULT_BUSINESS_ID,
+  sellerId: string,
+  updates: Partial<Seller> | { active?: boolean }
+): Promise<void> {
+  await ensureAuthSession();
+  const docRef = doc(getSellersCol(businessId), sellerId);
+  await updateDoc(docRef, cleanUndefined(updates));
+}
+

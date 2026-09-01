@@ -12,7 +12,10 @@ interface SellerSwitchModalProps {
 
 export function SellerSwitchModal({ onClose, isMandatory }: SellerSwitchModalProps) {
   const { sellers, activeSeller, loginWithPin, quickSelectSeller, createSeller } = useSellerAuth();
-  const [selectedSeller, setSelectedSeller] = useState<Seller | null>(activeSeller);
+  const activeSellers = sellers.filter((s) => s.active !== false);
+  const [selectedSeller, setSelectedSeller] = useState<Seller | null>(
+    activeSeller && activeSeller.active !== false ? activeSeller : (activeSellers[0] || null)
+  );
   const [pinInput, setPinInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -122,12 +125,12 @@ export function SellerSwitchModal({ onClose, isMandatory }: SellerSwitchModalPro
 
               {/* Sellers List */}
               <div className="space-y-2 mb-4">
-                {sellers.length === 0 ? (
+                {activeSellers.length === 0 ? (
                   <div className="p-4 text-center text-xs text-neutral-500 bg-neutral-50 rounded-xl">
-                    Carregando vendedores...
+                    Nenhum vendedor ativo encontrado.
                   </div>
                 ) : (
-                  sellers.map((s) => {
+                  activeSellers.map((s) => {
                     const isSelected = selectedSeller?.id === s.id;
                     const hasPin = Boolean(s.pinHash);
                     return (

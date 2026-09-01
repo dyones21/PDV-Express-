@@ -37,6 +37,7 @@ function MainAppContent() {
   const [hasPendingWrites, setHasPendingWrites] = useState(false);
   const [selectedSaleForDetails, setSelectedSaleForDetails] = useState<Sale | null>(null);
   const [isKeyboardActive, setIsKeyboardActive] = useState(false);
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('');
 
   useEffect(() => {
     // 1. Subscribe Customers
@@ -94,6 +95,10 @@ function MainAppContent() {
             onOpenSaleDetails={(sale) => setSelectedSaleForDetails(sale)}
             onOpenSettings={() => setActiveTab('config')}
             onOpenReports={() => setActiveTab('relatorios')}
+            onOpenCustomer={(customer) => {
+              setCustomerSearchTerm(customer.name);
+              setActiveTab('clientes');
+            }}
           />
         )}
 
@@ -136,6 +141,7 @@ function MainAppContent() {
             customers={customers}
             sales={sales}
             onOpenSaleDetails={(sale) => setSelectedSaleForDetails(sale)}
+            initialSearch={customerSearchTerm}
           />
         )}
 

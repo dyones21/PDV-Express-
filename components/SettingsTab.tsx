@@ -5,6 +5,7 @@ import { Seller, Sale, Customer } from '@/types';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
 import { useNetworkSync } from '@/hooks/use-network-sync';
 import { exportSalesCsv, exportDebtorsCsv } from '@/lib/export-csv';
+import { updateSeller } from '@/lib/db';
 import { 
   Settings, 
   Users, 
@@ -14,10 +15,16 @@ import {
   ShieldCheck, 
   HardDrive,
   UserCheck,
+  UserX,
   Smartphone,
   Download,
   FileSpreadsheet,
-  AlertCircle
+  AlertCircle,
+  Plus,
+  Power,
+  X,
+  KeyRound,
+  ShieldAlert
 } from 'lucide-react';
 import { SellerSwitchModal } from './SellerSwitchModal';
 
@@ -29,12 +36,20 @@ interface SettingsTabProps {
 }
 
 export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTabProps) {
-  const { activeSeller } = useSellerAuth();
+  const { activeSeller, isOwner, createSeller } = useSellerAuth();
   const { isOnline, canInstallPwa, promptInstall } = useNetworkSync();
   const [isSwitchModalOpen, setIsSwitchModalOpen] = useState(false);
   const [exportStartDate, setExportStartDate] = useState('');
   const [exportEndDate, setExportEndDate] = useState('');
   const [exportSuccessMsg, setExportSuccessMsg] = useState('');
+
+  // New Seller Form Modal State
+  const [isAddSellerOpen, setIsAddSellerOpen] = useState(false);
+  const [newSellerName, setNewSellerName] = useState('');
+  const [newSellerRole, setNewSellerRole] = useState<'owner' | 'seller'>('seller');
+  const [newSellerPin, setNewSellerPin] = useState('');
+  const [sellerFormError, setSellerFormError] = useState('');
+  const [isSubmittingSeller, setIsSubmittingSeller] = useState(false);
 
   const handleExportSales = () => {
     exportSalesCsv(sales, exportStartDate || undefined, exportEndDate || undefined);
@@ -46,6 +61,65 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
     exportDebtorsCsv(customers, sales);
     setExportSuccessMsg('Arquivo de clientes e fiados exportado com sucesso!');
     setTimeout(() => setExportSuccessMsg(''), 4000);
+  };
+
+  const handleCreateNewSeller = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSellerName.trim()) {
+      setSellerFormError('Digite o nome do vendedor.');
+      return;
+    }
+    const cleanPin = newSellerPin.trim();
+    if (!cleanPin || cleanPin.length !== 4 || !/^\d{4}$/.test(cleanPin)) {
+      setSellerFormError('O PIN deve conter exatamente 4 dígitos numéricos.');
+      return;
+    }
+
+    try {
+      setIsSubmittingSeller(true);
+      setSellerFormError('');
+      await createSeller(newSellerName.trim(), newSellerRole, cleanPin);
+      setIsAddSellerOpen(false);
+      setNewSellerName('');
+      setNewSellerPin('');
+      setNewSellerRole('seller');
+    } catch (err: any) {
+      setSellerFormError('Erro ao cadastrar vendedor: ' + err.message);
+    } finally {
+      setIsSubmittingSeller(false);
+    }
+  };
+
+  const handleToggleSellerActive = async (seller: Seller) => {
+    const isCurrentlyActive = seller.active !== false;
+    const nextActive = !isCurrentlyActive;
+
+    // Regra 1: Não permitir inativar o próprio vendedor logado no momento
+    if (isCurrentlyActive && activeSeller?.id === seller.id) {
+      alert('Você não pode inativar o vendedor atualmente em operação. Troque de vendedor antes de inativá-lo.');
+      return;
+    }
+
+    // Regra 2: Não permitir inativar o último vendedor com papel "owner" ativo
+    if (isCurrentlyActive && seller.role === 'owner') {
+      const activeOwners = sellers.filter((s) => s.role === 'owner' && s.active !== false);
+      if (activeOwners.length <= 1) {
+        alert('Não é possível inativar este vendedor. O sistema precisa manter pelo menos 1 Dono (proprietário) ativo.');
+        return;
+      }
+    }
+
+    const confirmMsg = nextActive
+      ? `Deseja reativar o vendedor "${seller.name}"? Ele voltará a ter acesso para login no aplicativo.`
+      : `Deseja inativar o vendedor "${seller.name}"? Ele não poderá mais fazer login, mas seu histórico de vendas será preservado.`;
+
+    if (confirm(confirmMsg)) {
+      try {
+        await updateSeller(undefined, seller.id, { active: nextActive });
+      } catch (err: any) {
+        alert('Erro ao alterar status do vendedor: ' + err.message);
+      }
+    }
   };
 
   return (
@@ -74,7 +148,7 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
             onClick={() => setIsSwitchModalOpen(true)}
             className="text-xs font-bold text-amber-700 hover:text-amber-800 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200"
           >
-            Trocar / Novo Vendedor
+            Trocar Vendedor
           </button>
         </div>
 
@@ -101,21 +175,108 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
 
         {/* Lista de Vendedores Cadastrados */}
         <div className="pt-2">
-          <div className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider mb-2">
-            Vendedores Habilitados ({sellers.length})
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">
+              Vendedores Habilitados ({sellers.length})
+            </div>
+            {isOwner && (
+              <button
+                id="btn-add-seller-settings"
+                type="button"
+                onClick={() => {
+                  setSellerFormError('');
+                  setNewSellerName('');
+                  setNewSellerPin('');
+                  setNewSellerRole('seller');
+                  setIsAddSellerOpen(true);
+                }}
+                className="text-xs font-bold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100/80 px-2.5 py-1 rounded-lg border border-amber-200 flex items-center gap-1 transition"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Adicionar Vendedor</span>
+              </button>
+            )}
           </div>
-          <div className="space-y-1.5 divide-y divide-neutral-100">
-            {sellers.map((s) => (
-              <div key={s.id} className="pt-1.5 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <UserCheck className="w-3.5 h-3.5 text-amber-700" />
-                  <span className="font-semibold text-neutral-800">{s.name}</span>
+
+          <div className="space-y-2">
+            {sellers.map((s) => {
+              const isInactive = s.active === false;
+              const isCurrent = activeSeller?.id === s.id;
+              return (
+                <div
+                  key={s.id}
+                  id={`seller-row-${s.id}`}
+                  className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 transition ${
+                    isInactive
+                      ? 'bg-neutral-50 border-neutral-200 opacity-60'
+                      : 'bg-white border-neutral-200 hover:border-neutral-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div
+                      className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 ${
+                        isInactive
+                          ? 'bg-neutral-200 text-neutral-500'
+                          : s.role === 'owner'
+                          ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                          : 'bg-neutral-100 text-neutral-700'
+                      }`}
+                    >
+                      {s.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`font-semibold text-xs truncate ${isInactive ? 'text-neutral-500 line-through' : 'text-neutral-900'}`}>
+                          {s.name}
+                        </span>
+                        {isCurrent && (
+                          <span className="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-200 px-1.5 py-0.2 rounded">
+                            Atual
+                          </span>
+                        )}
+                        {isInactive && (
+                          <span className="text-[10px] font-bold text-red-700 bg-red-100 border border-red-200 px-1.5 py-0.2 rounded">
+                            Inativo
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-neutral-400 font-medium mt-0.5">
+                        {s.role === 'owner' ? '👑 Dono / Administrador' : '🚚 Ajudante / Vendedor'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span className="text-[10px] font-medium text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full">
+                      {s.role === 'owner' ? 'Dono' : 'Ajudante'}
+                    </span>
+
+                    {/* Ativar/Inativar Button */}
+                    <button
+                      id={`btn-toggle-seller-${s.id}`}
+                      type="button"
+                      onClick={() => handleToggleSellerActive(s)}
+                      className={`p-1.5 rounded-lg transition text-xs font-semibold ${
+                        isInactive
+                          ? 'text-emerald-700 hover:bg-emerald-50'
+                          : isCurrent
+                          ? 'text-neutral-300 cursor-not-allowed'
+                          : 'text-neutral-400 hover:text-red-700 hover:bg-red-50'
+                      }`}
+                      title={
+                        isInactive
+                          ? 'Reativar vendedor'
+                          : isCurrent
+                          ? 'Vendedor em uso (troque de vendedor antes de inativar)'
+                          : 'Inativar vendedor'
+                      }
+                    >
+                      <Power className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-                <span className="text-[10px] font-medium text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full">
-                  {s.role === 'owner' ? 'Dono' : 'Ajudante'}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -249,6 +410,129 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
 
       {isSwitchModalOpen && (
         <SellerSwitchModal onClose={() => setIsSwitchModalOpen(false)} />
+      )}
+
+      {/* Modal: Adicionar Novo Vendedor */}
+      {isAddSellerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl border border-amber-100 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="bg-amber-700 px-5 py-4 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-amber-300" />
+                <h3 className="text-base font-bold">Adicionar Vendedor</h3>
+              </div>
+              <button
+                id="btn-close-add-seller"
+                type="button"
+                onClick={() => setIsAddSellerOpen(false)}
+                className="p-1 rounded-full text-amber-200 hover:text-white hover:bg-amber-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleCreateNewSeller} className="p-5 space-y-4">
+              {sellerFormError && (
+                <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{sellerFormError}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 mb-1">
+                  Nome do Vendedor *
+                </label>
+                <input
+                  id="input-new-seller-name"
+                  type="text"
+                  placeholder="Ex: Carlos (Ajudante)"
+                  value={newSellerName}
+                  onChange={(e) => setNewSellerName(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-neutral-50/50 font-medium"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 mb-1">
+                  Papel no Sistema *
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewSellerRole('seller')}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition flex flex-col items-center gap-0.5 ${
+                      newSellerRole === 'seller'
+                        ? 'border-amber-600 bg-amber-50 text-amber-900 ring-2 ring-amber-500/20'
+                        : 'border-neutral-200 text-neutral-600 hover:bg-neutral-50'
+                    }`}
+                  >
+                    <span>🚚 Ajudante</span>
+                    <span className="text-[10px] font-normal text-neutral-500">Vendas e cobranças</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewSellerRole('owner')}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition flex flex-col items-center gap-0.5 ${
+                      newSellerRole === 'owner'
+                        ? 'border-amber-600 bg-amber-50 text-amber-900 ring-2 ring-amber-500/20'
+                        : 'border-neutral-200 text-neutral-600 hover:bg-neutral-50'
+                    }`}
+                  >
+                    <span>👑 Dono (MEI)</span>
+                    <span className="text-[10px] font-normal text-neutral-500">Acesso total</span>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 mb-1">
+                  PIN de Acesso (4 dígitos numéricos) *
+                </label>
+                <div className="relative">
+                  <KeyRound className="w-4 h-4 absolute left-3 top-2.5 text-neutral-400" />
+                  <input
+                    id="input-new-seller-pin"
+                    type="password"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={4}
+                    placeholder="Ex: 1234"
+                    value={newSellerPin}
+                    onChange={(e) => setNewSellerPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    className="w-full pl-9 pr-3 py-2 text-sm tracking-widest rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-neutral-50/50 font-bold"
+                    required
+                  />
+                </div>
+                <p className="text-[10px] text-neutral-500 mt-1">
+                  Código de 4 números usado para entrar no aplicativo.
+                </p>
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddSellerOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-neutral-300 text-neutral-700 text-xs font-bold hover:bg-neutral-50 transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  id="btn-confirm-add-seller"
+                  type="submit"
+                  disabled={isSubmittingSeller}
+                  className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white text-xs font-bold shadow transition active:scale-95 disabled:opacity-50"
+                >
+                  {isSubmittingSeller ? 'Salvando...' : 'Salvar Vendedor'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

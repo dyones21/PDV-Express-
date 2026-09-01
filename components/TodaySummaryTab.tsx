@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Sale, Customer } from '@/types';
-import { formatCurrency, getTodayDateString, getTodayFormattedDisplay, formatDateBr } from '@/lib/format';
+import { formatCurrency, getTodayDateString, getTodayFormattedDisplay, formatDateBr, formatPhone } from '@/lib/format';
 import { 
   TrendingUp, 
   CheckCircle2, 
@@ -17,7 +17,11 @@ import {
   CloudUpload,
   Settings,
   ChevronRight,
-  BarChart3
+  BarChart3,
+  CalendarClock,
+  AlertTriangle,
+  Phone,
+  MessageCircle
 } from 'lucide-react';
 
 interface TodaySummaryTabProps {
@@ -28,6 +32,7 @@ interface TodaySummaryTabProps {
   onOpenSaleDetails: (sale: Sale) => void;
   onOpenSettings: () => void;
   onOpenReports?: () => void;
+  onOpenCustomer?: (customer: Customer) => void;
 }
 
 export function TodaySummaryTab({
@@ -38,8 +43,14 @@ export function TodaySummaryTab({
   onOpenSaleDetails,
   onOpenSettings,
   onOpenReports,
+  onOpenCustomer,
 }: TodaySummaryTabProps) {
   const todayStr = getTodayDateString();
+
+  // Filter pending visits (today or overdue)
+  const pendingVisits = customers
+    .filter((c) => Boolean(c.nextVisitReminder && c.nextVisitReminder <= todayStr && c.active !== false))
+    .sort((a, b) => (a.nextVisitReminder || '').localeCompare(b.nextVisitReminder || '') || a.name.localeCompare(b.name));
 
   // Filter sales for today (excluding cancelled sales)
   const todaySales = sales.filter(
@@ -54,6 +65,14 @@ export function TodaySummaryTab({
   // Total debt across all customers in database
   const totalAccumulatedDebt = customers.reduce((acc, c) => acc + (c.totalDebt || 0), 0);
   const totalDebtorsCount = customers.filter((c) => (c.totalDebt || 0) > 0).length;
+
+  const handleWhatsApp = (e: React.MouseEvent, customer: Customer) => {
+    e.stopPropagation();
+    const cleanPhone = customer.phone ? customer.phone.replace(/\D/g, '') : '';
+    if (!cleanPhone) return;
+    const url = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(`Olá, ${customer.name}! Passando na rota de vendas hoje.`)}`;
+    window.open(url, '_blank');
+  };
 
   return (
     <div className="space-y-4 pb-20 pt-2">
@@ -89,6 +108,94 @@ export function TodaySummaryTab({
           </button>
         </div>
       </div>
+
+      {/* Seção: Visitas de Hoje / Rota */}
+      {pendingVisits.length > 0 && (
+        <div className="bg-white rounded-2xl border border-amber-300/90 shadow-sm p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center">
+                <CalendarClock className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-neutral-900">Visitas de Hoje na Rota</h3>
+                <p className="text-[11px] text-neutral-500 font-medium">Clientes agendados para atendimento</p>
+              </div>
+            </div>
+            <span className="text-xs font-bold text-amber-800 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full">
+              {pendingVisits.length} {pendingVisits.length === 1 ? 'visita' : 'visitas'}
+            </span>
+          </div>
+
+          <div className="divide-y divide-neutral-100 space-y-1">
+            {pendingVisits.map((c) => {
+              const isOverdue = Boolean(c.nextVisitReminder && c.nextVisitReminder < todayStr);
+              return (
+                <div
+                  key={c.id}
+                  id={`visit-item-${c.id}`}
+                  onClick={() => onOpenCustomer?.(c)}
+                  className="pt-2.5 pb-1 flex items-start justify-between gap-2 hover:bg-amber-50/50 rounded-xl px-2 -mx-2 transition cursor-pointer active:bg-amber-100/50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-sm text-neutral-900 truncate">
+                        {c.name}
+                      </span>
+                      {isOverdue ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">
+                          <AlertTriangle className="w-2.5 h-2.5" />
+                          Atrasado ({formatDateBr(c.nextVisitReminder!)})
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded">
+                          <Clock className="w-2.5 h-2.5 text-amber-700" />
+                          Hoje
+                        </span>
+                      )}
+                      {(c.totalDebt || 0) > 0 && (
+                        <span className="text-[10px] font-semibold text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                          Fiado: {formatCurrency(c.totalDebt || 0)}
+                        </span>
+                      )}
+                    </div>
+
+                    {(c.referencePoint || c.address) && (
+                      <div className="flex items-center gap-1 text-xs text-neutral-500 mt-1">
+                        <MapPin className="w-3.5 h-3.5 text-amber-700 flex-shrink-0" />
+                        <span className="truncate">{c.referencePoint || c.address}</span>
+                      </div>
+                    )}
+
+                    {c.phone && (
+                      <div className="text-xs text-neutral-500 mt-0.5 flex items-center gap-1">
+                        <Phone className="w-3 h-3 text-neutral-400 flex-shrink-0" />
+                        <span>{formatPhone(c.phone)}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1 flex-shrink-0 pt-0.5">
+                    {c.phone && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleWhatsApp(e, c)}
+                        className="p-1.5 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition"
+                        title="Conversar no WhatsApp"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                      </button>
+                    )}
+                    <div className="p-1.5 text-neutral-400 hover:text-amber-700">
+                      <ChevronRight className="w-4 h-4" />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 3 Main Highlights Cards */}
       <div className="grid grid-cols-2 gap-3">
