@@ -2,9 +2,9 @@
 
 import React, { useState } from 'react';
 import { Customer, Product, SaleItem, PaymentStatus, PaymentMethod } from '@/types';
-import { formatCurrency, formatCurrencyInput, parseCurrencyToNumber, formatPhone, getTodayDateString } from '@/lib/format';
+import { formatCurrency, formatCurrencyInput, parseCurrencyToNumber, formatPhone, getTodayDateString, formatDateBr } from '@/lib/format';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
-import { recordSale, addCustomer } from '@/lib/db';
+import { recordSale, addCustomer, updateCustomer } from '@/lib/db';
 import { 
   User, 
   Search, 
@@ -20,7 +20,8 @@ import {
   Phone, 
   Sparkles, 
   Share2,
-  X
+  X,
+  CalendarClock
 } from 'lucide-react';
 
 interface NewSaleTabProps {
@@ -60,6 +61,13 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
   // UI state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successSaleData, setSuccessSaleData] = useState<any | null>(null);
+
+  // Next visit reminder in sale success modal
+  const [selectedReminderDate, setSelectedReminderDate] = useState<string>('');
+  const [reminderSkipped, setReminderSkipped] = useState(false);
+  const [isCustomDatePickerOpen, setIsCustomDatePickerOpen] = useState(false);
+  const [customDateInput, setCustomDateInput] = useState('');
+  const [isSavingReminder, setIsSavingReminder] = useState(false);
 
   // Filtered active products
   const activeProducts = products.filter((p) => p.active !== false);
@@ -194,6 +202,50 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
     });
   };
 
+  const calculateDaysFromToday = (days: number): string => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const handleSelectReminderDays = async (days: number) => {
+    if (!successSaleData?.customerId) return;
+    const calculatedDate = calculateDaysFromToday(days);
+    try {
+      setIsSavingReminder(true);
+      await updateCustomer(undefined, successSaleData.customerId, {
+        nextVisitReminder: calculatedDate,
+      });
+      setSelectedReminderDate(calculatedDate);
+    } catch (err: any) {
+      console.warn('Erro ao salvar lembrete de visita:', err);
+      setSelectedReminderDate(calculatedDate);
+    } finally {
+      setIsSavingReminder(false);
+    }
+  };
+
+  const handleSaveCustomReminder = async (dateStr: string) => {
+    if (!successSaleData?.customerId || !dateStr) return;
+    try {
+      setIsSavingReminder(true);
+      await updateCustomer(undefined, successSaleData.customerId, {
+        nextVisitReminder: dateStr,
+      });
+      setSelectedReminderDate(dateStr);
+      setIsCustomDatePickerOpen(false);
+    } catch (err: any) {
+      console.warn('Erro ao salvar lembrete de visita:', err);
+      setSelectedReminderDate(dateStr);
+      setIsCustomDatePickerOpen(false);
+    } finally {
+      setIsSavingReminder(false);
+    }
+  };
+
   const handleSubmitSale = async () => {
     if (selectedItems.length === 0) {
       alert('Selecione pelo menos um produto para a venda.');
@@ -242,6 +294,12 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
         id: saleId,
       });
 
+      // Reset reminder states for new sale modal
+      setSelectedReminderDate('');
+      setReminderSkipped(false);
+      setIsCustomDatePickerOpen(false);
+      setCustomDateInput('');
+
       // Reset form
       setQuantities({});
       setCustomPriceOverrides({});
@@ -258,7 +316,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
   };
 
   const handleShareWhatsApp = (sale: any) => {
-    const text = `📦 *Comprovante de Compra - PDV Express*\n\n` +
+    let text = `📦 *Comprovante de Compra - PDV Express*\n\n` +
       `Olá, *${sale.customerName}*!\n` +
       `Aqui está o comprovante da sua compra:\n\n` +
       sale.items.map((i: any) => `• ${i.quantity}x ${i.productName} - ${formatCurrency(i.subtotal)}`).join('\n') +
@@ -267,8 +325,13 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
         ? `✅ *Status:* Pago à vista no ${sale.paymentMethod}`
         : sale.paymentStatus === 'partial'
         ? `⏳ *Status:* Pago ${formatCurrency(sale.paidAmount)} | Restante a receber: ${formatCurrency(sale.remainingAmount)}`
-        : `⏳ *Status:* Fiado (A receber): ${formatCurrency(sale.remainingAmount)}`) +
-      `\n\n_Agradecemos a preferência!_`;
+        : `⏳ *Status:* Fiado (A receber): ${formatCurrency(sale.remainingAmount)}`);
+
+    if (selectedReminderDate) {
+      text += `\n📅 *Retorno previsto:* ${formatDateBr(selectedReminderDate)}`;
+    }
+
+    text += `\n\n_Agradecemos a preferência!_`;
 
     const phone = sale.customerPhone ? sale.customerPhone.replace(/\D/g, '') : '';
     const url = phone
@@ -835,6 +898,118 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
               </div>
             </div>
 
+            {/* ETAPA: Próxima Visita / Retorno (Apenas clientes cadastrados) */}
+            {successSaleData.customerId && (
+              <div className="mb-4 text-left">
+                {selectedReminderDate ? (
+                  <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs font-semibold text-amber-900 flex items-center justify-between animate-in fade-in duration-150">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <CalendarClock className="w-4 h-4 text-amber-700 flex-shrink-0" />
+                      <span className="truncate">
+                        Retorno agendado para <strong className="text-amber-950">{formatDateBr(selectedReminderDate)}</strong>
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedReminderDate('');
+                        setIsCustomDatePickerOpen(false);
+                      }}
+                      className="text-[11px] text-amber-700 hover:text-amber-900 font-bold ml-2 underline flex-shrink-0"
+                    >
+                      Alterar
+                    </button>
+                  </div>
+                ) : !reminderSkipped ? (
+                  <div className="p-3 bg-amber-50/70 border border-amber-200/90 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-neutral-800">
+                        <CalendarClock className="w-3.5 h-3.5 text-amber-700 flex-shrink-0" />
+                        <span>Quando pretende voltar aqui?</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setReminderSkipped(true)}
+                        className="text-[11px] font-semibold text-neutral-400 hover:text-neutral-600 transition"
+                      >
+                        Pular
+                      </button>
+                    </div>
+
+                    {!isCustomDatePickerOpen ? (
+                      <div className="grid grid-cols-4 gap-1.5">
+                        <button
+                          id="btn-reminder-7-days"
+                          type="button"
+                          disabled={isSavingReminder}
+                          onClick={() => handleSelectReminderDays(7)}
+                          className="py-2 px-1 bg-white hover:bg-amber-100/80 active:bg-amber-200 border border-amber-200 rounded-lg text-xs font-bold text-amber-900 transition active:scale-95 text-center shadow-xs"
+                        >
+                          7 dias
+                        </button>
+                        <button
+                          id="btn-reminder-15-days"
+                          type="button"
+                          disabled={isSavingReminder}
+                          onClick={() => handleSelectReminderDays(15)}
+                          className="py-2 px-1 bg-white hover:bg-amber-100/80 active:bg-amber-200 border border-amber-200 rounded-lg text-xs font-bold text-amber-900 transition active:scale-95 text-center shadow-xs"
+                        >
+                          15 dias
+                        </button>
+                        <button
+                          id="btn-reminder-30-days"
+                          type="button"
+                          disabled={isSavingReminder}
+                          onClick={() => handleSelectReminderDays(30)}
+                          className="py-2 px-1 bg-white hover:bg-amber-100/80 active:bg-amber-200 border border-amber-200 rounded-lg text-xs font-bold text-amber-900 transition active:scale-95 text-center shadow-xs"
+                        >
+                          30 dias
+                        </button>
+                        <button
+                          id="btn-reminder-custom-date"
+                          type="button"
+                          disabled={isSavingReminder}
+                          onClick={() => setIsCustomDatePickerOpen(true)}
+                          className="py-2 px-1 bg-white hover:bg-neutral-100 active:bg-neutral-200 border border-neutral-200 rounded-lg text-[11px] font-bold text-neutral-700 transition active:scale-95 text-center shadow-xs"
+                        >
+                          Escolher data
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5 pt-0.5">
+                        <div className="flex gap-1.5">
+                          <input
+                            id="input-reminder-custom-date"
+                            type="date"
+                            min={getTodayDateString()}
+                            value={customDateInput}
+                            onChange={(e) => setCustomDateInput(e.target.value)}
+                            className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-amber-300 focus:ring-2 focus:ring-amber-500 bg-white font-medium"
+                          />
+                          <button
+                            id="btn-confirm-custom-reminder"
+                            type="button"
+                            disabled={!customDateInput || isSavingReminder}
+                            onClick={() => handleSaveCustomReminder(customDateInput)}
+                            className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 disabled:opacity-40 text-white text-xs font-bold rounded-lg transition active:scale-95 shadow-xs"
+                          >
+                            Salvar
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsCustomDatePickerOpen(false)}
+                          className="text-[10px] text-neutral-500 hover:text-neutral-700 underline"
+                        >
+                          ← Voltar para opções rápidas
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            )}
+
             <div className="space-y-2">
               <button
                 id="btn-share-receipt-whatsapp"
@@ -851,6 +1026,10 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
                 type="button"
                 onClick={() => {
                   setSuccessSaleData(null);
+                  setSelectedReminderDate('');
+                  setReminderSkipped(false);
+                  setIsCustomDatePickerOpen(false);
+                  setCustomDateInput('');
                   onSaleCompleted();
                 }}
                 className="w-full py-2.5 px-4 bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs rounded-xl transition active:scale-95"
