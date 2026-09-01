@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Customer, Sale } from '@/types';
 import { formatCurrency, formatDateBr, getTodayDateString, formatPhone, formatCpf } from '@/lib/format';
 import { addCustomer, updateCustomer } from '@/lib/db';
+import { ConfirmDialog } from './ConfirmDialog';
 import { 
   Users, 
   Search, 
@@ -43,6 +44,7 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails, initialSearc
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [selectedHistoryCustomer, setSelectedHistoryCustomer] = useState<Customer | null>(null);
+  const [customerToToggle, setCustomerToToggle] = useState<{ customer: Customer; nextState: boolean } | null>(null);
 
   // Form State
   const [name, setName] = useState('');
@@ -90,20 +92,21 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails, initialSearc
     setActive(customer.active !== false);
   };
 
-  const handleToggleCustomerActive = async (customer: Customer) => {
+  const handleToggleCustomerActive = (customer: Customer) => {
     const nextState = customer.active === false ? true : false;
-    const confirmMessage = nextState
-      ? `Deseja reativar o cliente "${customer.name}"? Ele voltará a aparecer na lista de novas vendas.`
-      : `Deseja inativar o cliente "${customer.name}"? Ele não aparecerá mais na lista de novas vendas (o histórico e fiados serão mantidos).`;
-    
-    if (confirm(confirmMessage)) {
-      try {
-        await updateCustomer(undefined, customer.id, {
-          active: nextState,
-        });
-      } catch (err: any) {
-        alert('Erro ao atualizar status do cliente: ' + err.message);
-      }
+    setCustomerToToggle({ customer, nextState });
+  };
+
+  const handleConfirmToggleCustomer = async () => {
+    if (!customerToToggle) return;
+    const { customer, nextState } = customerToToggle;
+    try {
+      await updateCustomer(undefined, customer.id, {
+        active: nextState,
+      });
+      setCustomerToToggle(null);
+    } catch (err: any) {
+      alert('Erro ao atualizar status do cliente: ' + err.message);
     }
   };
 
@@ -640,6 +643,21 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails, initialSearc
           </div>
         </div>
       )}
+
+      {/* Modal de Confirmação: Ativar/Inativar Cliente */}
+      <ConfirmDialog
+        isOpen={Boolean(customerToToggle)}
+        title={customerToToggle?.nextState ? 'Reativar Cliente' : 'Inativar Cliente'}
+        message={
+          customerToToggle?.nextState
+            ? `Deseja reativar o cliente "${customerToToggle.customer.name}"? Ele voltará a aparecer na lista de novas vendas.`
+            : `Deseja inativar o cliente "${customerToToggle?.customer.name}"? Ele não aparecerá mais na lista de novas vendas (o histórico e fiados serão mantidos).`
+        }
+        confirmLabel={customerToToggle?.nextState ? 'Reativar' : 'Inativar'}
+        variant={customerToToggle?.nextState ? 'primary' : 'warning'}
+        onConfirm={handleConfirmToggleCustomer}
+        onCancel={() => setCustomerToToggle(null)}
+      />
     </div>
   );
 }

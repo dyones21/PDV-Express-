@@ -6,6 +6,7 @@ import { useSellerAuth } from '@/hooks/use-seller-auth';
 import { useNetworkSync } from '@/hooks/use-network-sync';
 import { exportSalesCsv, exportDebtorsCsv } from '@/lib/export-csv';
 import { updateSeller } from '@/lib/db';
+import { ConfirmDialog } from './ConfirmDialog';
 import { 
   Settings, 
   Users, 
@@ -50,6 +51,7 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
   const [newSellerPin, setNewSellerPin] = useState('');
   const [sellerFormError, setSellerFormError] = useState('');
   const [isSubmittingSeller, setIsSubmittingSeller] = useState(false);
+  const [sellerToToggle, setSellerToToggle] = useState<{ seller: Seller; nextActive: boolean } | null>(null);
 
   const handleExportSales = () => {
     exportSalesCsv(sales, exportStartDate || undefined, exportEndDate || undefined);
@@ -90,7 +92,7 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
     }
   };
 
-  const handleToggleSellerActive = async (seller: Seller) => {
+  const handleToggleSellerActive = (seller: Seller) => {
     const isCurrentlyActive = seller.active !== false;
     const nextActive = !isCurrentlyActive;
 
@@ -109,16 +111,17 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
       }
     }
 
-    const confirmMsg = nextActive
-      ? `Deseja reativar o vendedor "${seller.name}"? Ele voltará a ter acesso para login no aplicativo.`
-      : `Deseja inativar o vendedor "${seller.name}"? Ele não poderá mais fazer login, mas seu histórico de vendas será preservado.`;
+    setSellerToToggle({ seller, nextActive });
+  };
 
-    if (confirm(confirmMsg)) {
-      try {
-        await updateSeller(undefined, seller.id, { active: nextActive });
-      } catch (err: any) {
-        alert('Erro ao alterar status do vendedor: ' + err.message);
-      }
+  const handleConfirmToggleSeller = async () => {
+    if (!sellerToToggle) return;
+    const { seller, nextActive } = sellerToToggle;
+    try {
+      await updateSeller(undefined, seller.id, { active: nextActive });
+      setSellerToToggle(null);
+    } catch (err: any) {
+      alert('Erro ao alterar status do vendedor: ' + err.message);
     }
   };
 
@@ -534,6 +537,21 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
           </div>
         </div>
       )}
+
+      {/* Modal de Confirmação: Ativar/Inativar Vendedor */}
+      <ConfirmDialog
+        isOpen={Boolean(sellerToToggle)}
+        title={sellerToToggle?.nextActive ? 'Reativar Vendedor' : 'Inativar Vendedor'}
+        message={
+          sellerToToggle?.nextActive
+            ? `Deseja reativar o vendedor "${sellerToToggle.seller.name}"? Ele voltará a ter acesso para login no aplicativo.`
+            : `Deseja inativar o vendedor "${sellerToToggle?.seller.name}"? Ele não poderá mais fazer login, mas seu histórico de vendas será preservado.`
+        }
+        confirmLabel={sellerToToggle?.nextActive ? 'Reativar' : 'Inativar'}
+        variant={sellerToToggle?.nextActive ? 'primary' : 'warning'}
+        onConfirm={handleConfirmToggleSeller}
+        onCancel={() => setSellerToToggle(null)}
+      />
     </div>
   );
 }
