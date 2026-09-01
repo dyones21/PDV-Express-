@@ -18,7 +18,8 @@ import {
   PlusCircle,
   Percent,
   Check,
-  ShoppingBag
+  ShoppingBag,
+  Scale
 } from 'lucide-react';
 
 interface ProductsTabProps {
@@ -42,11 +43,24 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
   const [category, setCategory] = useState('Geral');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Weight cost mode state for Product Form
+  const [isWeightCostMode, setIsWeightCostMode] = useState(false);
+  const [weightTotalKg, setWeightTotalKg] = useState('');
+  const [weightTotalPaid, setWeightTotalPaid] = useState('');
+  const [weightYieldUnits, setWeightYieldUnits] = useState('');
+  const [baseStockQty, setBaseStockQty] = useState(0);
+
   // Modal State for Quick Restock
   const [restockProductTarget, setRestockProductTarget] = useState<Product | null>(null);
   const [restockQty, setRestockQty] = useState('');
   const [restockCost, setRestockCost] = useState('');
   const [isRestocking, setIsRestocking] = useState(false);
+
+  // Weight cost mode state for Quick Restock
+  const [isRestockWeightMode, setIsRestockWeightMode] = useState(false);
+  const [restockWeightKg, setRestockWeightKg] = useState('');
+  const [restockWeightTotalPaid, setRestockWeightTotalPaid] = useState('');
+  const [restockWeightYieldUnits, setRestockWeightYieldUnits] = useState('');
 
   // Categories list
   const categories = ['todos', ...Array.from(new Set(products.map((p) => p.category || 'Geral')))];
@@ -70,7 +84,12 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
     setName('');
     setPrice('');
     setCostPrice('');
+    setIsWeightCostMode(false);
+    setWeightTotalKg('');
+    setWeightTotalPaid('');
+    setWeightYieldUnits('');
     setStockQuantity('10');
+    setBaseStockQty(10);
     setUnit('un');
     setCategory('Geral');
     setIsFormModalOpen(true);
@@ -81,18 +100,56 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
     setName(p.name);
     setPrice(p.price !== undefined ? formatCurrencyInput(p.price) : '');
     setCostPrice(p.costPrice !== undefined ? formatCurrencyInput(p.costPrice) : '');
-    setStockQuantity(p.stockQuantity !== undefined ? p.stockQuantity.toString() : '0');
+    setIsWeightCostMode(false);
+    setWeightTotalKg('');
+    setWeightTotalPaid('');
+    setWeightYieldUnits('');
+    const initialStock = p.stockQuantity !== undefined ? p.stockQuantity : 0;
+    setStockQuantity(initialStock.toString());
+    setBaseStockQty(initialStock);
     setUnit(p.unit || 'un');
     setCategory(p.category || 'Geral');
     setIsFormModalOpen(true);
   };
+
+  const handleToggleWeightMode = (checked: boolean) => {
+    setIsWeightCostMode(checked);
+    if (checked) {
+      const currentBase = parseInt(stockQuantity, 10) || 0;
+      setBaseStockQty(currentBase);
+      const yieldNum = parseInt(weightYieldUnits, 10) || 0;
+      if (yieldNum > 0) {
+        setStockQuantity((currentBase + yieldNum).toString());
+      }
+    }
+  };
+
+  const handleWeightYieldChange = (val: string) => {
+    setWeightYieldUnits(val);
+    if (isWeightCostMode) {
+      const yieldNum = parseInt(val, 10) || 0;
+      setStockQuantity((baseStockQty + yieldNum).toString());
+    }
+  };
+
+  // Unit cost calculations for Product Form
+  const parsedFormWeightPaid = parseCurrencyToNumber(weightTotalPaid);
+  const parsedFormWeightYield = parseInt(weightYieldUnits, 10) || 0;
+  const formCalculatedUnitCost =
+    isWeightCostMode && parsedFormWeightYield > 0 && parsedFormWeightPaid > 0
+      ? parsedFormWeightPaid / parsedFormWeightYield
+      : 0;
+
+  const effectiveFormCost = isWeightCostMode
+    ? (formCalculatedUnitCost > 0 ? formCalculatedUnitCost : undefined)
+    : (costPrice ? parseCurrencyToNumber(costPrice) : undefined);
 
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !price) return;
 
     const parsedPrice = parseCurrencyToNumber(price);
-    const parsedCost = costPrice ? parseCurrencyToNumber(costPrice) : undefined;
+    const parsedCost = effectiveFormCost;
     const parsedStock = stockQuantity ? parseInt(stockQuantity, 10) || 0 : 0;
 
     if (parsedPrice <= 0) {
@@ -135,19 +192,40 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
     setRestockProductTarget(p);
     setRestockQty('');
     setRestockCost(p.costPrice !== undefined ? formatCurrencyInput(p.costPrice) : '');
+    setIsRestockWeightMode(false);
+    setRestockWeightKg('');
+    setRestockWeightTotalPaid('');
+    setRestockWeightYieldUnits('');
   };
+
+  // Unit cost calculations for Restock Modal
+  const parsedRestockWeightPaid = parseCurrencyToNumber(restockWeightTotalPaid);
+  const parsedRestockWeightYield = parseInt(restockWeightYieldUnits, 10) || 0;
+  const restockCalculatedUnitCost =
+    isRestockWeightMode && parsedRestockWeightYield > 0 && parsedRestockWeightPaid > 0
+      ? parsedRestockWeightPaid / parsedRestockWeightYield
+      : 0;
+
+  const restockAddedQty = isRestockWeightMode
+    ? parsedRestockWeightYield
+    : (parseInt(restockQty, 10) || 0);
 
   const handleSaveRestock = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!restockProductTarget || !restockQty) return;
+    if (!restockProductTarget) return;
 
-    const added = parseInt(restockQty, 10) || 0;
+    const added = isRestockWeightMode
+      ? parsedRestockWeightYield
+      : (parseInt(restockQty, 10) || 0);
+
     if (added <= 0) {
-      alert('Informe uma quantidade válida para reposição.');
+      alert(isRestockWeightMode ? 'Informe a quantidade de unidades que a compra rendeu.' : 'Informe uma quantidade válida para reposição.');
       return;
     }
 
-    const newCost = restockCost ? parseCurrencyToNumber(restockCost) : undefined;
+    const newCost = isRestockWeightMode
+      ? (restockCalculatedUnitCost > 0 ? restockCalculatedUnitCost : undefined)
+      : (restockCost ? parseCurrencyToNumber(restockCost) : undefined);
 
     try {
       setIsRestocking(true);
@@ -155,6 +233,10 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
       setRestockProductTarget(null);
       setRestockQty('');
       setRestockCost('');
+      setIsRestockWeightMode(false);
+      setRestockWeightKg('');
+      setRestockWeightTotalPaid('');
+      setRestockWeightYieldUnits('');
     } catch (err: any) {
       alert('Erro ao atualizar estoque: ' + err.message);
     } finally {
@@ -174,9 +256,9 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
 
   // Calculation for margin reference in modal
   const calcSalePrice = parseCurrencyToNumber(price);
-  const calcCostPrice = parseCurrencyToNumber(costPrice);
+  const calcCostPrice = effectiveFormCost || 0;
   const calcProfit = calcSalePrice > 0 ? calcSalePrice - calcCostPrice : 0;
-  const calcMarginPercent = calcSalePrice > 0 ? Math.round((calcProfit / calcSalePrice) * 100) : 0;
+  const calcMarginPercent = calcSalePrice > 0 && calcCostPrice > 0 ? Math.round((calcProfit / calcSalePrice) * 100) : 0;
 
   return (
     <div className="space-y-4 pb-24 pt-2">
@@ -474,37 +556,126 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                    Preço de Venda (R$) *
-                  </label>
-                  <input
-                    id="input-prod-form-price"
-                    type="text"
-                    inputMode="numeric"
-                    required
-                    placeholder="R$ 0,00"
-                    value={price}
-                    onChange={(e) => setPrice(formatCurrencyInput(e.target.value))}
-                    className="w-full px-3 py-2 text-sm font-bold text-amber-950 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500"
-                  />
+              <div className="space-y-2">
+                <div className={`grid ${isWeightCostMode ? 'grid-cols-1' : 'grid-cols-2'} gap-2`}>
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                      Preço de Venda (R$) *
+                    </label>
+                    <input
+                      id="input-prod-form-price"
+                      type="text"
+                      inputMode="numeric"
+                      required
+                      placeholder="R$ 0,00"
+                      value={price}
+                      onChange={(e) => setPrice(formatCurrencyInput(e.target.value))}
+                      className="w-full px-3 py-2 text-sm font-bold text-amber-950 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+
+                  {!isWeightCostMode && (
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                        Custo de Compra (R$)
+                      </label>
+                      <input
+                        id="input-prod-form-cost"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="R$ 0,00"
+                        value={costPrice}
+                        onChange={(e) => setCostPrice(formatCurrencyInput(e.target.value))}
+                        className="w-full px-3 py-2 text-sm font-semibold rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+                  )}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                    Custo de Compra (R$)
+                {/* Toggle Weight Cost Calculation */}
+                <div className="pt-0.5">
+                  <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-neutral-700 hover:text-neutral-900">
+                    <input
+                      id="checkbox-prod-weight-mode"
+                      type="checkbox"
+                      checked={isWeightCostMode}
+                      onChange={(e) => handleToggleWeightMode(e.target.checked)}
+                      className="w-4 h-4 text-amber-700 rounded border-neutral-300 focus:ring-amber-500 cursor-pointer"
+                    />
+                    <span className="flex items-center gap-1.5">
+                      <Scale className="w-3.5 h-3.5 text-amber-700" />
+                      Comprei por peso (kg), mas vendo por unidade
+                    </span>
                   </label>
-                  <input
-                    id="input-prod-form-cost"
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="R$ 0,00"
-                    value={costPrice}
-                    onChange={(e) => setCostPrice(formatCurrencyInput(e.target.value))}
-                    className="w-full px-3 py-2 text-sm font-semibold rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500"
-                  />
                 </div>
+
+                {/* Expanded Weight Calculation Panel */}
+                {isWeightCostMode && (
+                  <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200 space-y-2.5">
+                    <div className="text-[11px] font-bold text-amber-900 uppercase tracking-wide">
+                      Cálculo do custo por peso (kg)
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                          Peso total (kg)
+                        </label>
+                        <input
+                          id="input-prod-weight-kg"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="Ex: 5,00"
+                          value={weightTotalKg}
+                          onChange={(e) => setWeightTotalKg(e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-neutral-300 focus:ring-2 focus:ring-amber-500 bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                          Valor pago (R$)
+                        </label>
+                        <input
+                          id="input-prod-weight-total-paid"
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="R$ 0,00"
+                          value={weightTotalPaid}
+                          onChange={(e) => setWeightTotalPaid(formatCurrencyInput(e.target.value))}
+                          className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-neutral-300 focus:ring-2 focus:ring-amber-500 bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                          Unidades rendidas
+                        </label>
+                        <input
+                          id="input-prod-weight-yield"
+                          type="number"
+                          step="1"
+                          min="1"
+                          placeholder="Ex: 20"
+                          value={weightYieldUnits}
+                          onChange={(e) => handleWeightYieldChange(e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-neutral-300 focus:ring-2 focus:ring-amber-500 bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Highlight calculated cost */}
+                    <div className="p-2 bg-white rounded-lg border border-amber-300 flex items-center justify-between">
+                      <span className="text-xs text-amber-900 font-semibold">
+                        Custo por unidade:
+                      </span>
+                      <span className="text-sm font-extrabold text-amber-950">
+                        {formCalculatedUnitCost > 0 ? formatCurrency(formCalculatedUnitCost) : '—'}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Dynamic Profit & Margin Preview */}
@@ -627,47 +798,134 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                  Quantas unidades você está recebendo/adicionando? *
+              {/* Toggle Weight Restock Calculation */}
+              <div className="pt-0.5">
+                <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-neutral-700 hover:text-neutral-900">
+                  <input
+                    id="checkbox-restock-weight-mode"
+                    type="checkbox"
+                    checked={isRestockWeightMode}
+                    onChange={(e) => setIsRestockWeightMode(e.target.checked)}
+                    className="w-4 h-4 text-amber-700 rounded border-neutral-300 focus:ring-amber-500 cursor-pointer"
+                  />
+                  <span className="flex items-center gap-1.5">
+                    <Scale className="w-3.5 h-3.5 text-amber-700" />
+                    Comprei por peso (kg), mas vendo por unidade
+                  </span>
                 </label>
-                <input
-                  id="input-restock-qty"
-                  type="number"
-                  required
-                  min="1"
-                  placeholder="Ex: 10"
-                  value={restockQty}
-                  onChange={(e) => setRestockQty(e.target.value)}
-                  className="w-full px-3 py-2.5 text-base font-extrabold text-neutral-900 rounded-xl border border-amber-300 focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  autoFocus
-                />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                  Custo Unitário desta Compra (R$) - Opcional
-                </label>
-                <input
-                  id="input-restock-cost"
-                  type="text"
-                  inputMode="numeric"
-                  placeholder={restockProductTarget.costPrice ? `Atual: ${formatCurrency(restockProductTarget.costPrice)}` : 'R$ 0,00'}
-                  value={restockCost}
-                  onChange={(e) => setRestockCost(formatCurrencyInput(e.target.value))}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500"
-                />
-                <p className="text-[10px] text-neutral-500 mt-1">
-                  Deixe em branco para manter o custo atual cadastrado.
-                </p>
-              </div>
+              {!isRestockWeightMode ? (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                      Quantas unidades você está recebendo/adicionando? *
+                    </label>
+                    <input
+                      id="input-restock-qty"
+                      type="number"
+                      required
+                      min="1"
+                      placeholder="Ex: 10"
+                      value={restockQty}
+                      onChange={(e) => setRestockQty(e.target.value)}
+                      className="w-full px-3 py-2.5 text-base font-extrabold text-neutral-900 rounded-xl border border-amber-300 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      autoFocus
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                      Custo Unitário desta Compra (R$) - Opcional
+                    </label>
+                    <input
+                      id="input-restock-cost"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder={restockProductTarget.costPrice ? `Atual: ${formatCurrency(restockProductTarget.costPrice)}` : 'R$ 0,00'}
+                      value={restockCost}
+                      onChange={(e) => setRestockCost(formatCurrencyInput(e.target.value))}
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500"
+                    />
+                    <p className="text-[10px] text-neutral-500 mt-1">
+                      Deixe em branco para manter o custo atual cadastrado.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200 space-y-2.5">
+                  <div className="text-[11px] font-bold text-amber-900 uppercase tracking-wide">
+                    Cálculo de reposição por peso (kg)
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                        Peso total (kg)
+                      </label>
+                      <input
+                        id="input-restock-weight-kg"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="Ex: 5,00"
+                        value={restockWeightKg}
+                        onChange={(e) => setRestockWeightKg(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-neutral-300 focus:ring-2 focus:ring-amber-500 bg-white"
+                        autoFocus
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                        Valor pago (R$)
+                      </label>
+                      <input
+                        id="input-restock-weight-total-paid"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="R$ 0,00"
+                        value={restockWeightTotalPaid}
+                        onChange={(e) => setRestockWeightTotalPaid(formatCurrencyInput(e.target.value))}
+                        className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-neutral-300 focus:ring-2 focus:ring-amber-500 bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                        Unidades rendidas *
+                      </label>
+                      <input
+                        id="input-restock-weight-yield"
+                        type="number"
+                        step="1"
+                        min="1"
+                        placeholder="Ex: 20"
+                        value={restockWeightYieldUnits}
+                        onChange={(e) => setRestockWeightYieldUnits(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-neutral-300 focus:ring-2 focus:ring-amber-500 bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Highlight calculated cost */}
+                  <div className="p-2 bg-white rounded-lg border border-amber-300 flex items-center justify-between">
+                    <span className="text-xs text-amber-900 font-semibold">
+                      Custo por unidade:
+                    </span>
+                    <span className="text-sm font-extrabold text-amber-950">
+                      {restockCalculatedUnitCost > 0 ? formatCurrency(restockCalculatedUnitCost) : '—'}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Preview of new stock */}
-              {parseInt(restockQty, 10) > 0 && (
+              {restockAddedQty > 0 && (
                 <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 text-xs flex justify-between items-center text-emerald-950 font-semibold">
                   <span>Novo Estoque Total:</span>
                   <span className="text-sm font-extrabold text-emerald-800">
-                    {(restockProductTarget.stockQuantity || 0) + parseInt(restockQty, 10)} {restockProductTarget.unit || 'peças'}
+                    {(restockProductTarget.stockQuantity || 0) + restockAddedQty} {restockProductTarget.unit || 'peças'}
                   </span>
                 </div>
               )}
