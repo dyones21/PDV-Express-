@@ -9,9 +9,10 @@ interface BottomNavProps {
   activeTab: TabType;
   onChangeTab: (tab: TabType) => void;
   pendingDebtorsCount?: number;
+  isHidden?: boolean;
 }
 
-export function BottomNav({ activeTab, onChangeTab, pendingDebtorsCount = 0 }: BottomNavProps) {
+export function BottomNav({ activeTab, onChangeTab, pendingDebtorsCount = 0, isHidden = false }: BottomNavProps) {
   const tabs = [
     { id: 'hoje' as TabType, label: 'Hoje', icon: Home },
     { id: 'a-receber' as TabType, label: 'A Receber', icon: HandCoins, badge: pendingDebtorsCount },
@@ -23,7 +24,11 @@ export function BottomNav({ activeTab, onChangeTab, pendingDebtorsCount = 0 }: B
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-amber-200/60 shadow-[0_-4px_16px_rgba(0,0,0,0.05)] pb-[env(safe-area-inset-bottom)]">
+    <nav
+      className={`fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-amber-200/60 shadow-[0_-4px_16px_rgba(0,0,0,0.05)] pb-[env(safe-area-inset-bottom)] transition-transform duration-200 ${
+        isHidden ? 'translate-y-full' : 'translate-y-0'
+      }`}
+    >
       <div className="max-w-2xl mx-auto px-1 flex items-center justify-around h-16">
         {tabs.map((tab) => {
           const Icon = tab.icon;

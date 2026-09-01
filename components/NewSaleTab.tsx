@@ -27,9 +27,10 @@ interface NewSaleTabProps {
   customers: Customer[];
   products: Product[];
   onSaleCompleted: () => void;
+  onSearchFocusChange?: (focused: boolean) => void;
 }
 
-export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabProps) {
+export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocusChange }: NewSaleTabProps) {
   const { activeSeller } = useSellerAuth();
 
   // State: Customer
@@ -48,6 +49,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [customPriceOverrides, setCustomPriceOverrides] = useState<Record<string, number>>({});
   const [productSearch, setProductSearch] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   // State: Payment
   const [paymentOption, setPaymentOption] = useState<'paid_full' | 'pending_full' | 'partial'>('paid_full');
@@ -449,6 +451,14 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
             placeholder="Buscar produto por nome..."
             value={productSearch}
             onChange={(e) => setProductSearch(e.target.value)}
+            onFocus={() => {
+              setIsSearchFocused(true);
+              onSearchFocusChange?.(true);
+            }}
+            onBlur={() => {
+              setIsSearchFocused(false);
+              onSearchFocusChange?.(false);
+            }}
             className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-neutral-50/50"
           />
         </div>
@@ -673,7 +683,11 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
       </div>
 
       {/* STICKY BOTTOM BAR FOR INSTANT CONFIRMATION */}
-      <div className="fixed bottom-16 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-amber-200 p-3 shadow-lg">
+      <div
+        className={`fixed bottom-16 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-amber-200 p-3 shadow-lg transition-transform duration-200 ${
+          isSearchFocused ? 'translate-y-full' : 'translate-y-0'
+        }`}
+      >
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-3">
           <div>
             <div className="text-[11px] text-neutral-500 font-medium">Total da Venda</div>

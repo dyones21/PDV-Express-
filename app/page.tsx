@@ -36,6 +36,7 @@ function MainAppContent() {
   
   const [hasPendingWrites, setHasPendingWrites] = useState(false);
   const [selectedSaleForDetails, setSelectedSaleForDetails] = useState<Sale | null>(null);
+  const [isKeyboardActive, setIsKeyboardActive] = useState(false);
 
   useEffect(() => {
     // 1. Subscribe Customers
@@ -101,6 +102,7 @@ function MainAppContent() {
             customers={customers}
             products={products}
             onSaleCompleted={() => setActiveTab('hoje')}
+            onSearchFocusChange={setIsKeyboardActive}
           />
         )}
 
@@ -177,6 +179,7 @@ function MainAppContent() {
         activeTab={activeTab}
         onChangeTab={(tab) => setActiveTab(tab)}
         pendingDebtorsCount={pendingDebtorsCount}
+        isHidden={isKeyboardActive}
       />
     </div>
   );
