@@ -47,6 +47,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
   // State: Cart Items (mapping productId -> quantity)
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [customPriceOverrides, setCustomPriceOverrides] = useState<Record<string, number>>({});
+  const [productSearch, setProductSearch] = useState('');
 
   // State: Payment
   const [paymentOption, setPaymentOption] = useState<'paid_full' | 'pending_full' | 'partial'>('paid_full');
@@ -60,6 +61,18 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
 
   // Filtered active products
   const activeProducts = products.filter((p) => p.active !== false);
+
+  const normalizeStr = (str: string) =>
+    str
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+  const filteredProducts = activeProducts.filter((p) => {
+    if (!productSearch.trim()) return true;
+    const term = normalizeStr(productSearch);
+    return normalizeStr(p.name).includes(term);
+  });
 
   // Calculate items and total
   const selectedItems: SaleItem[] = [];
@@ -427,9 +440,27 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
           </span>
         </div>
 
+        {/* Product Search */}
+        <div className="relative">
+          <Search className="w-3.5 h-3.5 absolute left-3 top-3 text-neutral-400" />
+          <input
+            id="input-search-product-sale"
+            type="text"
+            placeholder="Buscar produto por nome..."
+            value={productSearch}
+            onChange={(e) => setProductSearch(e.target.value)}
+            className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-neutral-50/50"
+          />
+        </div>
+
         {/* Product Grid */}
-        <div className="space-y-2.5">
-          {activeProducts.map((prod) => {
+        {filteredProducts.length === 0 ? (
+          <p className="text-xs text-neutral-400 text-center py-4 bg-neutral-50/70 rounded-xl border border-dashed border-neutral-200">
+            Nenhum produto encontrado.
+          </p>
+        ) : (
+          <div className="space-y-2.5">
+            {filteredProducts.map((prod) => {
             const qty = quantities[prod.id] || 0;
             const currentPrice = customPriceOverrides[prod.id] !== undefined ? customPriceOverrides[prod.id] : prod.price;
             const isSelected = qty > 0;
@@ -520,6 +551,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted }: NewSaleTabP
             );
           })}
         </div>
+      )}
       </div>
 
       {/* STEP 3: FORMA DE PAGAMENTO */}

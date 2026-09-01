@@ -88,8 +88,8 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
     setWeightTotalKg('');
     setWeightTotalPaid('');
     setWeightYieldUnits('');
-    setStockQuantity('10');
-    setBaseStockQty(10);
+    setStockQuantity('0');
+    setBaseStockQty(0);
     setUnit('un');
     setCategory('Geral');
     setIsFormModalOpen(true);
