@@ -289,7 +289,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
       <div className="grid grid-cols-3 gap-2">
         <div className="bg-white p-3 rounded-2xl border border-neutral-200/80 shadow-sm">
           <div className="text-[10px] uppercase font-bold text-neutral-500 tracking-wider">Total em Estoque</div>
-          <div className="text-lg font-extrabold text-neutral-900 mt-0.5">
+          <div className="text-base font-extrabold text-neutral-900 mt-0.5 break-words leading-tight">
             {totalStockCount} <span className="text-xs font-semibold text-neutral-500">itens</span>
           </div>
           <div className="text-[10px] text-amber-700 font-semibold mt-0.5">
@@ -299,7 +299,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
 
         <div className="bg-white p-3 rounded-2xl border border-neutral-200/80 shadow-sm">
           <div className="text-[10px] uppercase font-bold text-neutral-500 tracking-wider">Valor em Venda</div>
-          <div className="text-lg font-extrabold text-amber-900 mt-0.5">
+          <div className="text-base font-extrabold text-amber-900 mt-0.5 break-words leading-tight">
             {formatCurrency(totalStockSaleValue)}
           </div>
           <div className="text-[10px] text-neutral-500 font-medium mt-0.5 truncate">
@@ -618,7 +618,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
 
                     <div className="grid grid-cols-3 gap-2">
                       <div>
-                        <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                        <label className="block text-[11px] font-semibold text-neutral-700 min-h-[28px] leading-tight mb-1">
                           Peso total (kg)
                         </label>
                         <input
@@ -634,7 +634,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                        <label className="block text-[11px] font-semibold text-neutral-700 min-h-[28px] leading-tight mb-1">
                           Valor pago (R$)
                         </label>
                         <input
@@ -649,7 +649,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                        <label className="block text-[11px] font-semibold text-neutral-700 min-h-[28px] leading-tight mb-1">
                           Unidades rendidas
                         </label>
                         <input
@@ -860,7 +860,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
 
                   <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                      <label className="block text-[11px] font-semibold text-neutral-700 min-h-[28px] leading-tight mb-1">
                         Peso total (kg)
                       </label>
                       <input
@@ -877,7 +877,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                      <label className="block text-[11px] font-semibold text-neutral-700 min-h-[28px] leading-tight mb-1">
                         Valor pago (R$)
                       </label>
                       <input
@@ -892,7 +892,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                      <label className="block text-[11px] font-semibold text-neutral-700 min-h-[28px] leading-tight mb-1">
                         Unidades rendidas *
                       </label>
                       <input
