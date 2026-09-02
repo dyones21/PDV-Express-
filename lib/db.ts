@@ -293,7 +293,8 @@ export async function restockProduct(
   businessId = DEFAULT_BUSINESS_ID,
   productId: string,
   addedQuantity: number,
-  newCostPrice?: number
+  newCostPrice?: number,
+  newSalePrice?: number
 ): Promise<void> {
   await ensureAuthSession();
   const docRef = doc(getProductsCol(businessId), productId);
@@ -306,6 +307,9 @@ export async function restockProduct(
     };
     if (newCostPrice !== undefined && newCostPrice > 0) {
       updates.costPrice = newCostPrice;
+    }
+    if (newSalePrice !== undefined && newSalePrice > 0) {
+      updates.price = newSalePrice;
     }
     await updateDoc(docRef, cleanUndefined(updates));
   }
