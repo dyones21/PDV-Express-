@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Customer, Sale, PaymentMethod } from '@/types';
 import { formatCurrency, formatCurrencyInput, parseCurrencyToNumber, formatDateBr, getTodayDateString } from '@/lib/format';
 import { recordPayment } from '@/lib/db';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
+import { useNetworkSync } from '@/hooks/use-network-sync';
 import { 
   HandCoins, 
   Search, 
@@ -29,8 +30,18 @@ interface DebtorsTabProps {
 
 export function DebtorsTab({ customers, sales, onOpenSaleDetails }: DebtorsTabProps) {
   const { activeSeller } = useSellerAuth();
+  const { isOnline } = useNetworkSync();
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null);
+  const [paymentSyncNotice, setPaymentSyncNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!paymentSyncNotice) return;
+    const timer = setTimeout(() => {
+      setPaymentSyncNotice(null);
+    }, 7000);
+    return () => clearTimeout(timer);
+  }, [paymentSyncNotice]);
 
   // Settlement Modal state
   const [settleCustomer, setSettleCustomer] = useState<Customer | null>(null);
@@ -89,22 +100,61 @@ export function DebtorsTab({ customers, sales, onOpenSaleDetails }: DebtorsTabPr
       return;
     }
 
+    const resetSettleForm = () => {
+      setSettleCustomer(null);
+      setCustomAmountInput('');
+      setNotes('');
+    };
+
     try {
       setIsSubmitting(true);
-      await recordPayment(undefined, {
-        customerId: settleCustomer.id,
-        customerName: settleCustomer.name,
-        amount: amountToPay,
-        sellerId: activeSeller?.id || 'vendedor',
-        sellerName: activeSeller?.name || 'Vendedor',
-        paymentMethod,
-        paymentDate: getTodayDateString(),
-        notes: notes.trim() || undefined,
+
+      const paymentOperation = async () => {
+        await recordPayment(undefined, {
+          customerId: settleCustomer.id,
+          customerName: settleCustomer.name,
+          amount: amountToPay,
+          sellerId: activeSeller?.id || 'vendedor',
+          sellerName: activeSeller?.name || 'Vendedor',
+          paymentMethod,
+          paymentDate: getTodayDateString(),
+          notes: notes.trim() || undefined,
+        });
+        return { success: true };
+      };
+
+      let timeoutId: any;
+      const timeoutMs = isOnline ? 15000 : 2000;
+
+      const timeoutPromise = new Promise<{ isOfflineTimeout: true }>((resolve, reject) => {
+        timeoutId = setTimeout(() => {
+          if (!isOnline) {
+            // Offline mode: treat as success after 2 seconds (safe in Firestore local cache)
+            resolve({ isOfflineTimeout: true });
+          } else {
+            // Online mode: 15 seconds without confirmation is treated as failure
+            reject(new Error('TIMEOUT_PAYMENT'));
+          }
+        }, timeoutMs);
       });
 
-      setSettleCustomer(null);
-    } catch (err: any) {
-      alert('Erro ao registrar pagamento: ' + err.message);
+      try {
+        const raceResult = await Promise.race([paymentOperation(), timeoutPromise]);
+        clearTimeout(timeoutId);
+
+        resetSettleForm();
+
+        if (!isOnline || ('isOfflineTimeout' in raceResult)) {
+          setPaymentSyncNotice('Pagamento registrado no aparelho. 📡 Será sincronizado quando a internet voltar.');
+        }
+      } catch (innerErr: any) {
+        clearTimeout(timeoutId);
+        if (innerErr?.message === 'TIMEOUT_PAYMENT') {
+          alert('Não foi possível confirmar o salvamento. Verifique sua conexão e tente novamente.');
+        } else {
+          alert('Erro ao registrar pagamento: ' + innerErr.message);
+        }
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -142,6 +192,24 @@ export function DebtorsTab({ customers, sales, onOpenSaleDetails }: DebtorsTabPr
           {debtors.length} {debtors.length === 1 ? 'cliente com saldo devedor' : 'clientes com saldo devedor'}
         </p>
       </div>
+
+      {/* Payment Pending Sync Notice */}
+      {paymentSyncNotice && (
+        <div className="p-3 bg-amber-50 border border-amber-200/90 rounded-2xl text-xs font-semibold text-amber-900 flex items-center justify-between shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <span className="text-base">📡</span>
+            <span>{paymentSyncNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPaymentSyncNotice(null)}
+            className="p-1 text-amber-700 hover:text-amber-900 transition"
+            title="Fechar aviso"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Search Input */}
       <div className="relative">
