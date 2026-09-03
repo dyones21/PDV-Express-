@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Customer, Product, SaleItem, PaymentStatus, PaymentMethod } from '@/types';
 import { formatCurrency, formatCurrencyInput, parseCurrencyToNumber, formatPhone, getTodayDateString, formatDateBr } from '@/lib/format';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
+import { useNetworkSync } from '@/hooks/use-network-sync';
 import { recordSale, addCustomer, updateCustomer } from '@/lib/db';
 import { 
   User, 
@@ -33,6 +34,7 @@ interface NewSaleTabProps {
 
 export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocusChange }: NewSaleTabProps) {
   const { activeSeller } = useSellerAuth();
+  const { isOnline } = useNetworkSync();
 
   // State: Customer
   const [isAnonymous, setIsAnonymous] = useState(false);
@@ -61,6 +63,9 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
   // UI state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successSaleData, setSuccessSaleData] = useState<any | null>(null);
+
+  // Safety ref: prevents duplicate sale if previous attempt finished saving in background/local cache
+  const pendingSavedSaleRef = useRef<{ id: string; saleData: Record<string, any> } | null>(null);
 
   // Next visit reminder in sale success modal
   const [selectedReminderDate, setSelectedReminderDate] = useState<string>('');
@@ -180,9 +185,10 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
         resolve({});
         return;
       }
+      const geoTimeoutMs = isOnline ? 8000 : 1500;
       const timeoutId = setTimeout(() => {
         resolve({});
-      }, 8000); // 8 seconds max
+      }, geoTimeoutMs);
 
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -197,7 +203,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
           console.warn('GPS não capturado (não bloqueante):', error);
           resolve({});
         },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+        { enableHighAccuracy: true, timeout: geoTimeoutMs, maximumAge: 60000 }
       );
     });
   };
@@ -257,6 +263,43 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
       return;
     }
 
+    const currentCustomerId = isAnonymous ? null : selectedCustomerId;
+
+    // If previous attempt already succeeded saving in background/local cache, use it without duplicating
+    if (pendingSavedSaleRef.current) {
+      const { id, saleData } = pendingSavedSaleRef.current;
+      if (
+        saleData.customerId === currentCustomerId &&
+        saleData.totalAmount === calculatedTotal &&
+        saleData.paidAmount === paidAmount
+      ) {
+        pendingSavedSaleRef.current = null;
+        setSuccessSaleData({
+          ...saleData,
+          id,
+          hasPendingWrites: !isOnline,
+        });
+
+        // Reset reminder states for new sale modal
+        setSelectedReminderDate('');
+        setReminderSkipped(false);
+        setIsCustomDatePickerOpen(false);
+        setCustomDateInput('');
+
+        // Reset form
+        setQuantities({});
+        setCustomPriceOverrides({});
+        setSelectedCustomerId('');
+        setIsAnonymous(false);
+        setPaymentOption('paid_full');
+        setPartialPaidInput('');
+        setNotes('');
+        return;
+      } else {
+        pendingSavedSaleRef.current = null;
+      }
+    }
+
     try {
       setIsSubmitting(true);
 
@@ -264,11 +307,10 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
         ? 'Cliente Avulso (Rua)'
         : selectedCustomer?.name || 'Cliente';
 
-      // Capture GPS location if available (non-blocking with 8s timeout)
-      const locationCoords = await getDeviceLocation();
+      const fallbackSaleId = 'offline_' + Date.now();
 
-      const saleData = {
-        customerId: isAnonymous ? null : selectedCustomerId,
+      const baseSaleData = {
+        customerId: currentCustomerId,
         customerName,
         customerPhone: selectedCustomer?.phone,
         customerAddress: selectedCustomer?.address,
@@ -283,33 +325,112 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
         paymentMethod: paymentOption === 'pending_full' ? 'dinheiro' : paymentMethod,
         notes: notes.trim() || undefined,
         saleDate: getTodayDateString(),
-        latitude: locationCoords.latitude,
-        longitude: locationCoords.longitude,
       };
 
-      const saleId = await recordSale(undefined, saleData);
+      const saveOperation = async () => {
+        // Capture GPS location if available (non-blocking with short timeout if offline)
+        const locationCoords = await getDeviceLocation();
 
-      setSuccessSaleData({
-        ...saleData,
-        id: saleId,
+        const fullSaleData = {
+          ...baseSaleData,
+          latitude: locationCoords.latitude,
+          longitude: locationCoords.longitude,
+        };
+
+        const saleId = await recordSale(undefined, fullSaleData);
+        // Cache result in ref to avoid duplicates if timeout fires right before/during resolution
+        pendingSavedSaleRef.current = { id: saleId, saleData: fullSaleData };
+        return { saleId, saleData: fullSaleData };
+      };
+
+      let timeoutId: any;
+      const timeoutMs = isOnline ? 15000 : 2000;
+
+      const timeoutPromise = new Promise<{ isOfflineTimeout: true }>((resolve, reject) => {
+        timeoutId = setTimeout(() => {
+          if (!isOnline) {
+            // Offline mode: treat as success after 2 seconds (safe in Firestore local cache)
+            resolve({ isOfflineTimeout: true });
+          } else {
+            // Online mode: 15 seconds without confirmation is treated as failure
+            reject(new Error('TIMEOUT_SAVE'));
+          }
+        }, timeoutMs);
       });
 
-      // Reset reminder states for new sale modal
-      setSelectedReminderDate('');
-      setReminderSkipped(false);
-      setIsCustomDatePickerOpen(false);
-      setCustomDateInput('');
+      try {
+        const raceResult = await Promise.race([saveOperation(), timeoutPromise]);
+        clearTimeout(timeoutId);
 
-      // Reset form
-      setQuantities({});
-      setCustomPriceOverrides({});
-      setSelectedCustomerId('');
-      setIsAnonymous(false);
-      setPaymentOption('paid_full');
-      setPartialPaidInput('');
-      setNotes('');
-    } catch (err: any) {
-      alert('Erro ao salvar venda: ' + err.message);
+        let finalSaleId = fallbackSaleId;
+        let finalSaleData: Record<string, any> = baseSaleData;
+        let isAwaitingSync = !isOnline;
+
+        if ('isOfflineTimeout' in raceResult) {
+          isAwaitingSync = true;
+          const currentSaved = pendingSavedSaleRef.current as { id: string; saleData: Record<string, any> } | null;
+          if (currentSaved) {
+            finalSaleId = currentSaved.id;
+            finalSaleData = currentSaved.saleData;
+          }
+        } else {
+          finalSaleId = raceResult.saleId;
+          finalSaleData = raceResult.saleData;
+          isAwaitingSync = !isOnline;
+        }
+
+        pendingSavedSaleRef.current = null;
+
+        setSuccessSaleData({
+          ...finalSaleData,
+          id: finalSaleId,
+          hasPendingWrites: isAwaitingSync,
+        });
+
+        // Reset reminder states for new sale modal
+        setSelectedReminderDate('');
+        setReminderSkipped(false);
+        setIsCustomDatePickerOpen(false);
+        setCustomDateInput('');
+
+        // Reset form
+        setQuantities({});
+        setCustomPriceOverrides({});
+        setSelectedCustomerId('');
+        setIsAnonymous(false);
+        setPaymentOption('paid_full');
+        setPartialPaidInput('');
+        setNotes('');
+      } catch (innerErr: any) {
+        clearTimeout(timeoutId);
+        if (innerErr?.message === 'TIMEOUT_SAVE') {
+          // If the sale completed right as timeout fired
+          const saved = pendingSavedSaleRef.current as { id: string; saleData: Record<string, any> } | null;
+          if (saved) {
+            pendingSavedSaleRef.current = null;
+            setSuccessSaleData({
+              ...saved.saleData,
+              id: saved.id,
+              hasPendingWrites: !isOnline,
+            });
+            setSelectedReminderDate('');
+            setReminderSkipped(false);
+            setIsCustomDatePickerOpen(false);
+            setCustomDateInput('');
+            setQuantities({});
+            setCustomPriceOverrides({});
+            setSelectedCustomerId('');
+            setIsAnonymous(false);
+            setPaymentOption('paid_full');
+            setPartialPaidInput('');
+            setNotes('');
+            return;
+          }
+          alert('Não foi possível confirmar o salvamento. Verifique sua conexão e tente novamente.');
+        } else {
+          alert('Erro ao salvar venda: ' + innerErr.message);
+        }
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -870,6 +991,13 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
             <p className="text-xs text-neutral-500 mt-1">
               Salva com segurança no aparelho (offline) e pronta para sincronizar.
             </p>
+
+            {(!isOnline || successSaleData?.hasPendingWrites) && (
+              <div className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-900 text-xs font-semibold rounded-full border border-amber-200/90 shadow-xs">
+                <span>📡</span>
+                <span>Será sincronizado quando a internet voltar</span>
+              </div>
+            )}
 
             <div className="my-4 p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-left space-y-1 text-xs">
               <div className="flex justify-between font-semibold text-neutral-800">

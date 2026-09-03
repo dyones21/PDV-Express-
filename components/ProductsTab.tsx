@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Product } from '@/types';
 import { formatCurrency, formatCurrencyInput, parseCurrencyToNumber } from '@/lib/format';
 import { addProduct, updateProduct, restockProduct } from '@/lib/db';
+import { useNetworkSync } from '@/hooks/use-network-sync';
 import { 
   Package, 
   Plus, 
@@ -28,8 +29,18 @@ interface ProductsTabProps {
 }
 
 export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
+  const { isOnline } = useNetworkSync();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
+  const [restockSyncNotice, setRestockSyncNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!restockSyncNotice) return;
+    const timer = setTimeout(() => {
+      setRestockSyncNotice(null);
+    }, 7000);
+    return () => clearTimeout(timer);
+  }, [restockSyncNotice]);
 
   // Modal State for New / Edit Product
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -231,9 +242,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
 
     const newSalePrice = restockSalePrice ? parseCurrencyToNumber(restockSalePrice) : undefined;
 
-    try {
-      setIsRestocking(true);
-      await restockProduct(undefined, restockProductTarget.id, added, newCost, newSalePrice);
+    const resetRestockForm = () => {
       setRestockProductTarget(null);
       setRestockQty('');
       setRestockCost('');
@@ -242,8 +251,48 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
       setRestockWeightKg('');
       setRestockWeightTotalPaid('');
       setRestockWeightYieldUnits('');
-    } catch (err: any) {
-      alert('Erro ao atualizar estoque: ' + err.message);
+    };
+
+    try {
+      setIsRestocking(true);
+
+      const restockOperation = async () => {
+        await restockProduct(undefined, restockProductTarget.id, added, newCost, newSalePrice);
+        return { success: true };
+      };
+
+      let timeoutId: any;
+      const timeoutMs = isOnline ? 15000 : 2000;
+
+      const timeoutPromise = new Promise<{ isOfflineTimeout: true }>((resolve, reject) => {
+        timeoutId = setTimeout(() => {
+          if (!isOnline) {
+            // Offline mode: treat as success after 2 seconds (safe in Firestore local cache)
+            resolve({ isOfflineTimeout: true });
+          } else {
+            // Online mode: 15 seconds without confirmation is treated as failure
+            reject(new Error('TIMEOUT_RESTOCK'));
+          }
+        }, timeoutMs);
+      });
+
+      try {
+        const raceResult = await Promise.race([restockOperation(), timeoutPromise]);
+        clearTimeout(timeoutId);
+
+        resetRestockForm();
+
+        if (!isOnline || ('isOfflineTimeout' in raceResult)) {
+          setRestockSyncNotice('Entrada de estoque salva no aparelho. 📡 Será sincronizado quando a internet voltar.');
+        }
+      } catch (innerErr: any) {
+        clearTimeout(timeoutId);
+        if (innerErr?.message === 'TIMEOUT_RESTOCK') {
+          alert('Não foi possível confirmar o salvamento. Verifique sua conexão e tente novamente.');
+        } else {
+          alert('Erro ao atualizar estoque: ' + innerErr.message);
+        }
+      }
     } finally {
       setIsRestocking(false);
     }
@@ -289,6 +338,24 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
           <span>Novo Produto</span>
         </button>
       </div>
+
+      {/* Restock Pending Sync Notice */}
+      {restockSyncNotice && (
+        <div className="p-3 bg-amber-50 border border-amber-200/90 rounded-2xl text-xs font-semibold text-amber-900 flex items-center justify-between shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <span className="text-base">📡</span>
+            <span>{restockSyncNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setRestockSyncNotice(null)}
+            className="p-1 text-amber-700 hover:text-amber-900 transition"
+            title="Fechar aviso"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Stock Summary Cards */}
       <div className="grid grid-cols-3 gap-2">
