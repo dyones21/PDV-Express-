@@ -24,6 +24,17 @@ import { ReportsTab } from '@/components/ReportsTab';
 import { SaleDetailsModal } from '@/components/SaleDetailsModal';
 import { SellerSwitchModal } from '@/components/SellerSwitchModal';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
+import { DeviceLoginScreen } from '@/components/DeviceLoginScreen';
+import { BusinessProvider } from '@/context/BusinessContext';
+import { 
+  auth, 
+  resolveBusinessId, 
+  resolveUserBusiness, 
+  setUserBusinessMap, 
+  DEFAULT_BUSINESS_ID as FALLBACK_BUSINESS_ID 
+} from '@/lib/firebase';
+import { onAuthStateChanged, User, signOut } from 'firebase/auth';
+import { AlertCircle, RefreshCw, LogOut } from 'lucide-react';
 
 function MainAppContent() {
   const { activeSeller, isLoading: isSellerAuthLoading } = useSellerAuth();
@@ -192,9 +203,153 @@ function MainAppContent() {
 }
 
 export default function HomePage() {
+  const [currentUser, setCurrentUser] = useState<User | null | undefined>(undefined);
+  const [resolvedBusinessId, setResolvedBusinessId] = useState<string | null | undefined>(undefined);
+  const [businessName, setBusinessName] = useState<string>('Queijaria Artesanal da Serra');
+  const [isResolving, setIsResolving] = useState<boolean>(false);
+  const [isLinkingDefault, setIsLinkingDefault] = useState<boolean>(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
+      if (user) {
+        setIsResolving(true);
+        try {
+          const bId = await resolveBusinessId(user.uid);
+          if (bId) {
+            const bInfo = await resolveUserBusiness(user.uid);
+            setBusinessName(bInfo?.businessName || 'Queijaria Artesanal da Serra');
+            setResolvedBusinessId(bId);
+          } else {
+            setResolvedBusinessId(null);
+          }
+        } catch (err) {
+          console.warn('Erro ao resolver negócio inicial:', err);
+          setResolvedBusinessId(null);
+        } finally {
+          setIsResolving(false);
+        }
+      } else {
+        setResolvedBusinessId(undefined);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // 1. Verificando autenticação do dispositivo no Firebase Auth
+  if (currentUser === undefined || (currentUser && isResolving)) {
+    return (
+      <div className="min-h-screen bg-amber-50/60 flex flex-col items-center justify-center p-4 select-none">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-3 border-amber-700 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm font-semibold text-amber-900">Verificando autorização do dispositivo...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Aparelho sem login real -> Exibir tela de login com email e senha
+  if (!currentUser) {
+    return <DeviceLoginScreen />;
+  }
+
+  // 3. Usuário logado, mas sem registro na coleção userBusinessMap
+  if (resolvedBusinessId === null) {
+    return (
+      <div className="min-h-screen bg-amber-50/60 flex flex-col items-center justify-center p-4 select-none">
+        <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-sm border border-amber-200 text-center">
+          <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3 text-amber-800">
+            <AlertCircle className="w-6 h-6 text-amber-700" />
+          </div>
+          <h2 className="text-lg font-bold text-neutral-900">Acesso Não Vinculado</h2>
+          <p className="text-sm text-neutral-700 mt-2">
+            Sua conta não está vinculada a nenhum negócio. Fale com o suporte.
+          </p>
+
+          <div className="mt-4 p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-xs text-neutral-600 break-all text-left">
+            <div><strong className="text-neutral-800">Conta:</strong> {currentUser.email}</div>
+            <div className="mt-1"><strong className="text-neutral-800">ID de Usuário (UID):</strong> {currentUser.uid}</div>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-2.5">
+            {/* Opção para vincular ao negócio existente padrão (facilita onboarding do MEI) */}
+            <button
+              type="button"
+              id="btn-link-default-business"
+              disabled={isLinkingDefault}
+              onClick={async () => {
+                setIsLinkingDefault(true);
+                try {
+                  await setUserBusinessMap(
+                    currentUser.uid,
+                    FALLBACK_BUSINESS_ID,
+                    'Queijaria Artesanal da Serra',
+                    'owner'
+                  );
+                  setResolvedBusinessId(FALLBACK_BUSINESS_ID);
+                  setBusinessName('Queijaria Artesanal da Serra');
+                } catch (err) {
+                  console.warn('Erro ao vincular negócio padrão:', err);
+                } finally {
+                  setIsLinkingDefault(false);
+                }
+              }}
+              className="w-full py-2.5 px-3 bg-amber-700 hover:bg-amber-800 active:scale-[0.99] text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-2"
+            >
+              {isLinkingDefault ? 'Vinculando...' : 'Vincular a Queijaria Artesanal da Serra'}
+            </button>
+
+            <button
+              type="button"
+              id="btn-retry-resolve-business"
+              onClick={async () => {
+                setIsResolving(true);
+                try {
+                  const bId = await resolveBusinessId(currentUser.uid);
+                  if (bId) {
+                    const bInfo = await resolveUserBusiness(currentUser.uid);
+                    setBusinessName(bInfo?.businessName || 'Queijaria Artesanal da Serra');
+                    setResolvedBusinessId(bId);
+                  }
+                } finally {
+                  setIsResolving(false);
+                }
+              }}
+              className="w-full py-2.5 px-3 border border-neutral-300 hover:bg-neutral-50 text-neutral-700 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Verificar novamente</span>
+            </button>
+
+            <button
+              type="button"
+              id="btn-device-logout"
+              onClick={async () => {
+                await signOut(auth);
+              }}
+              className="w-full py-2 px-3 text-red-600 hover:bg-red-50 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Sair da conta</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 4. Usuário autenticado e negócio resolvido
   return (
-    <SellerAuthProvider>
-      <MainAppContent />
-    </SellerAuthProvider>
+    <BusinessProvider
+      businessId={resolvedBusinessId || FALLBACK_BUSINESS_ID}
+      businessName={businessName}
+      userEmail={currentUser.email}
+      userId={currentUser.uid}
+    >
+      <SellerAuthProvider>
+        <MainAppContent />
+      </SellerAuthProvider>
+    </BusinessProvider>
   );
 }

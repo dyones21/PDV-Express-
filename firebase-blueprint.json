@@ -72,6 +72,17 @@
       },
       "required": ["customerName", "sellerName", "items", "totalAmount", "paymentStatus", "saleDate"]
     },
+    "UserBusinessMap": {
+      "title": "UserBusinessMap",
+      "description": "Mapeamento entre o UID do Firebase Auth do dono e seu negócio",
+      "type": "object",
+      "properties": {
+        "businessId": { "type": "string" },
+        "businessName": { "type": "string" },
+        "role": { "type": "string", "enum": ["owner", "admin"] }
+      },
+      "required": ["businessId", "businessName"]
+    },
     "Payment": {
       "title": "Payment",
       "description": "Pagamento / quitação de fiado",
@@ -91,6 +102,10 @@
     }
   },
   "firestore": {
+    "userBusinessMap/{uid}": {
+      "schema": "UserBusinessMap",
+      "description": "Mapeamento do UID do Firebase Auth para o negócio MEI"
+    },
     "businesses/{businessId}": {
       "schema": "Business",
       "description": "Documento raiz do negócio do MEI"
