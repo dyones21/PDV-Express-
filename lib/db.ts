@@ -4,6 +4,7 @@ import {
   setDoc,
   addDoc,
   updateDoc,
+  increment,
   getDocs,
   getDoc,
   onSnapshot,
@@ -298,21 +299,16 @@ export async function restockProduct(
 ): Promise<void> {
   await ensureAuthSession();
   const docRef = doc(getProductsCol(businessId), productId);
-  const snap = await getDoc(docRef);
-  if (snap.exists()) {
-    const data = snap.data() as Product;
-    const currentStock = Number(data.stockQuantity !== undefined ? data.stockQuantity : 0);
-    const updates: Partial<Product> = {
-      stockQuantity: currentStock + addedQuantity,
-    };
-    if (newCostPrice !== undefined && newCostPrice > 0) {
-      updates.costPrice = newCostPrice;
-    }
-    if (newSalePrice !== undefined && newSalePrice > 0) {
-      updates.price = newSalePrice;
-    }
-    await updateDoc(docRef, cleanUndefined(updates));
+  const updates: Record<string, any> = {
+    stockQuantity: increment(addedQuantity),
+  };
+  if (newCostPrice !== undefined && newCostPrice > 0) {
+    updates.costPrice = newCostPrice;
   }
+  if (newSalePrice !== undefined && newSalePrice > 0) {
+    updates.price = newSalePrice;
+  }
+  await updateDoc(docRef, cleanUndefined(updates));
 }
 
 // ----------------- SALES -----------------
@@ -354,21 +350,15 @@ export async function recordSale(
   if (saleData.customerId) {
     try {
       const cRef = doc(getCustomersCol(businessId), saleData.customerId);
-      const cSnap = await getDoc(cRef);
-      if (cSnap.exists()) {
-        const data = cSnap.data() as Customer;
-        const currentDebt = Number(data.totalDebt || 0);
-        const currentPurchased = Number(data.totalPurchased || 0);
-        
-        await updateDoc(cRef, cleanUndefined({
-          totalDebt: currentDebt + Number(saleData.remainingAmount || 0),
-          totalPurchased: currentPurchased + Number(saleData.totalAmount || 0),
-          lastPurchaseDate: saleData.saleDate,
-          updatedAt: nowIso,
-        }));
-      }
-    } catch (e) {
-      console.warn('Customer balance update warning (offline safe):', e);
+      await updateDoc(cRef, cleanUndefined({
+        totalDebt: increment(Number(saleData.remainingAmount || 0)),
+        totalPurchased: increment(Number(saleData.totalAmount || 0)),
+        lastPurchaseDate: saleData.saleDate,
+        updatedAt: nowIso,
+      }));
+    } catch (e: any) {
+      console.error('Erro ao atualizar saldo do cliente:', e);
+      throw new Error(`A venda foi gravada, mas houve erro ao atualizar o saldo do cliente: ${e?.message || e}`);
     }
   }
 
@@ -399,18 +389,15 @@ export async function recordSale(
       try {
         if (item.productId && item.productId !== 'sample') {
           const pRef = doc(getProductsCol(businessId), item.productId);
-          const pSnap = await getDoc(pRef);
-          if (pSnap.exists()) {
-            const pData = pSnap.data() as Product;
-            const currentStock = Number(pData.stockQuantity !== undefined ? pData.stockQuantity : 0);
-            const newStock = Math.max(0, currentStock - Number(item.quantity || 0));
+          const qty = Number(item.quantity || 0);
+          if (qty > 0) {
             await updateDoc(pRef, cleanUndefined({
-              stockQuantity: newStock,
+              stockQuantity: increment(-qty),
             }));
           }
         }
-      } catch (e) {
-        console.warn('Product stock decrement warning (offline safe):', e);
+      } catch (e: any) {
+        console.error('Erro ao decrementar estoque do produto na venda:', e);
       }
     }
   }
@@ -453,18 +440,15 @@ export async function cancelSale(
       try {
         if (item.productId && item.productId !== 'sample') {
           const pRef = doc(getProductsCol(businessId), item.productId);
-          const pSnap = await getDoc(pRef);
-          if (pSnap.exists()) {
-            const pData = pSnap.data() as Product;
-            const currentStock = Number(pData.stockQuantity !== undefined ? pData.stockQuantity : 0);
-            const returnedStock = currentStock + Number(item.quantity || 0);
+          const qty = Number(item.quantity || 0);
+          if (qty > 0) {
             await updateDoc(pRef, cleanUndefined({
-              stockQuantity: returnedStock,
+              stockQuantity: increment(qty),
             }));
           }
         }
       } catch (e) {
-        console.warn('Error restoring stock on sale cancel:', e);
+        console.error('Erro ao restaurar estoque no cancelamento da venda:', e);
       }
     }
   }
@@ -473,25 +457,17 @@ export async function cancelSale(
   if (saleData.customerId && saleData.customerId !== 'avulso') {
     try {
       const cRef = doc(getCustomersCol(businessId), saleData.customerId);
-      const cSnap = await getDoc(cRef);
-      if (cSnap.exists()) {
-        const cData = cSnap.data() as Customer;
-        const currentDebt = Number(cData.totalDebt || 0);
-        const currentPurchased = Number(cData.totalPurchased || 0);
-        const remainingToDeduct = Number(saleData.remainingAmount || 0);
-        const totalToDeduct = Number(saleData.totalAmount || 0);
+      const remainingToDeduct = Number(saleData.remainingAmount || 0);
+      const totalToDeduct = Number(saleData.totalAmount || 0);
 
-        const newDebt = Math.max(0, currentDebt - remainingToDeduct);
-        const newPurchased = Math.max(0, currentPurchased - totalToDeduct);
-
-        await updateDoc(cRef, cleanUndefined({
-          totalDebt: newDebt,
-          totalPurchased: newPurchased,
-          updatedAt: nowIso,
-        }));
-      }
-    } catch (e) {
-      console.warn('Error updating customer debt on sale cancel:', e);
+      await updateDoc(cRef, cleanUndefined({
+        totalDebt: increment(-remainingToDeduct),
+        totalPurchased: increment(-totalToDeduct),
+        updatedAt: nowIso,
+      }));
+    } catch (e: any) {
+      console.error('Erro ao reverter saldo do cliente no cancelamento:', e);
+      throw new Error(`Venda cancelada, mas houve erro ao reverter saldo do cliente: ${e?.message || e}`);
     }
   }
 }
@@ -544,18 +520,13 @@ export async function recordPayment(
   if (paymentData.customerId && paymentData.customerId !== 'avulso') {
     try {
       const cRef = doc(getCustomersCol(businessId), paymentData.customerId);
-      const cSnap = await getDoc(cRef);
-      if (cSnap.exists()) {
-        const cData = cSnap.data() as Customer;
-        const currentDebt = Number(cData.totalDebt || 0);
-        const newDebt = Math.max(0, currentDebt - paymentData.amount);
-        await updateDoc(cRef, cleanUndefined({
-          totalDebt: newDebt,
-          updatedAt: nowIso,
-        }));
-      }
-    } catch (e) {
-      console.warn('Customer balance reduction warning:', e);
+      await updateDoc(cRef, cleanUndefined({
+        totalDebt: increment(-Number(paymentData.amount || 0)),
+        updatedAt: nowIso,
+      }));
+    } catch (e: any) {
+      console.error('Erro ao deduzir dívida do cliente no pagamento:', e);
+      throw new Error(`Pagamento registrado, mas houve erro ao abater a dívida do cliente: ${e?.message || e}`);
     }
   }
 
