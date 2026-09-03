@@ -354,7 +354,7 @@ export function ReportsTab({ sales, payments, sellers, customers, products }: Re
                   🏆 Campeão de Vendas
                 </div>
                 <div className="text-base font-extrabold text-neutral-900 mt-0.5">
-                  {topProduct.name}
+                  {typeof topProduct.name === 'string' ? topProduct.name : 'Produto'}
                 </div>
                 <div className="text-xs text-neutral-600 mt-0.5">
                   Faturamento gerado: <strong>{formatCurrency(topProduct.totalRevenue)}</strong>
@@ -362,10 +362,10 @@ export function ReportsTab({ sales, payments, sellers, customers, products }: Re
               </div>
               <div className="text-right">
                 <span className="text-2xl font-black text-amber-900">
-                  {topProduct.quantity}
+                  {typeof topProduct.quantity === 'number' ? topProduct.quantity : 0}
                 </span>
                 <span className="text-xs font-bold text-amber-800 ml-1">
-                  {topProduct.unit}
+                  {typeof topProduct.unit === 'string' ? topProduct.unit : 'un'}
                 </span>
               </div>
             </div>
@@ -384,14 +384,14 @@ export function ReportsTab({ sales, payments, sellers, customers, products }: Re
                           #{idx + 2}
                         </span>
                         <div>
-                          <span className="font-bold text-neutral-800">{prod.name}</span>
+                          <span className="font-bold text-neutral-800">{typeof prod.name === 'string' ? prod.name : 'Produto'}</span>
                           <span className="text-[10px] text-neutral-400 block">
                             {formatCurrency(prod.totalRevenue)}
                           </span>
                         </div>
                       </div>
                       <span className="font-extrabold text-neutral-900">
-                        {prod.quantity} {prod.unit}
+                        {typeof prod.quantity === 'number' ? prod.quantity : 0} {typeof prod.unit === 'string' ? prod.unit : 'un'}
                       </span>
                     </div>
                   ))}
@@ -433,14 +433,14 @@ export function ReportsTab({ sales, payments, sellers, customers, products }: Re
               >
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 rounded-full bg-amber-700 text-white font-bold flex items-center justify-center text-xs">
-                    {sellerItem.name.charAt(0).toUpperCase()}
+                    {typeof sellerItem.name === 'string' && sellerItem.name ? sellerItem.name.charAt(0).toUpperCase() : 'V'}
                   </div>
                   <div>
                     <div className="text-xs font-bold text-neutral-900">
-                      {sellerItem.name}
+                      {typeof sellerItem.name === 'string' ? sellerItem.name : 'Vendedor'}
                     </div>
                     <div className="text-[10px] text-neutral-500">
-                      {sellerItem.salesCount} {sellerItem.salesCount === 1 ? 'venda realizada' : 'vendas realizadas'}
+                      {typeof sellerItem.salesCount === 'number' ? sellerItem.salesCount : 0} {sellerItem.salesCount === 1 ? 'venda realizada' : 'vendas realizadas'}
                     </div>
                   </div>
                 </div>

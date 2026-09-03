@@ -19,6 +19,83 @@ import { hashPin, generateSalt } from './security';
 
 export { DEFAULT_BUSINESS_ID };
 
+export function isFirestoreSentinel(val: any): boolean {
+  if (!val || typeof val !== 'object') return false;
+  if ('_methodName' in val) return true;
+  const name = val.constructor?.name;
+  if (name && (name === 'FieldValue' || name.includes('FieldValue') || name.includes('Transform') || name === 'Timestamp')) return true;
+  return false;
+}
+
+/**
+ * Recursively cleans any data object received from Firestore or local storage,
+ * ensuring no FieldValue sentinel objects ({_methodName, ar} or {_methodName, _operand})
+ * can ever leak into React components as children.
+ */
+export function sanitizeDocData<T>(obj: T): T {
+  if (obj === null || obj === undefined) return obj;
+
+  if (typeof obj === 'object') {
+    // If it's a Firestore FieldValue sentinel
+    if ('_methodName' in (obj as any)) {
+      const sentinel = obj as any;
+      if (typeof sentinel._operand === 'number') return sentinel._operand as any;
+      if (typeof sentinel.ar === 'number') return sentinel.ar as any;
+      return 0 as any;
+    }
+
+    // If it's a Firestore Timestamp with toDate()
+    if (typeof (obj as any).toDate === 'function') {
+      try {
+        return (obj as any).toDate().toISOString() as any;
+      } catch {
+        return '' as any;
+      }
+    }
+
+    // Array
+    if (Array.isArray(obj)) {
+      return obj.map(sanitizeDocData) as any;
+    }
+
+    // Plain object
+    const result: any = {};
+    for (const [key, val] of Object.entries(obj)) {
+      result[key] = sanitizeDocData(val);
+    }
+    return result as T;
+  }
+
+  return obj;
+}
+
+/**
+ * Safely parses strings, returning fallback if object or undefined
+ */
+export function sanitizeString(val: any, fallback = ''): string {
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number') return String(val);
+  return fallback;
+}
+
+/**
+ * Safely parses numbers from Firestore documents, guarding against
+ * sentinel objects ({_methodName, ar}) or NaN/strings.
+ */
+export function sanitizeNumber(val: any, fallback = 0): number {
+  if (typeof val === 'number') return isNaN(val) ? fallback : val;
+  if (val && typeof val === 'object') {
+    if ('_operand' in val && typeof val._operand === 'number') return val._operand;
+    if ('ar' in val && typeof val.ar === 'number') return val.ar;
+    return fallback;
+  }
+  if (typeof val === 'string') {
+    const parsed = Number(val);
+    return isNaN(parsed) ? fallback : parsed;
+  }
+  return fallback;
+}
+
 /**
  * Strips all undefined values recursively to ensure Firestore never throws undefined errors
  */
@@ -26,11 +103,19 @@ export function cleanUndefined<T extends Record<string, any>>(obj: T): T {
   const result: any = {};
   for (const [key, value] of Object.entries(obj)) {
     if (value !== undefined) {
-      if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      if (
+        value !== null &&
+        typeof value === 'object' &&
+        !Array.isArray(value) &&
+        !isFirestoreSentinel(value) &&
+        !(value instanceof Date)
+      ) {
         result[key] = cleanUndefined(value);
       } else if (Array.isArray(value)) {
         result[key] = value.map((item) =>
-          item !== null && typeof item === 'object' ? cleanUndefined(item) : item
+          item !== null && typeof item === 'object' && !isFirestoreSentinel(item) && !(item instanceof Date)
+            ? cleanUndefined(item)
+            : item
         );
       } else {
         result[key] = value;
@@ -210,10 +295,20 @@ export function subscribeCustomers(
     q,
     { includeMetadataChanges: true },
     (snapshot) => {
-      const customers: Customer[] = snapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data(),
-      })) as Customer[];
+      const customers: Customer[] = snapshot.docs.map((docSnap) => {
+        const cleanData = sanitizeDocData(docSnap.data());
+        return {
+          id: docSnap.id,
+          ...cleanData,
+          name: sanitizeString(cleanData.name, 'Cliente'),
+          phone: sanitizeString(cleanData.phone, ''),
+          cpf: sanitizeString(cleanData.cpf, ''),
+          address: sanitizeString(cleanData.address, ''),
+          referencePoint: sanitizeString(cleanData.referencePoint, ''),
+          totalDebt: sanitizeNumber(cleanData.totalDebt, 0),
+          totalPurchased: sanitizeNumber(cleanData.totalPurchased, 0),
+        } as Customer;
+      });
       callback(customers, snapshot.metadata);
     },
     (err) => console.warn('subscribeCustomers error:', err)
@@ -260,10 +355,19 @@ export function subscribeProducts(
     q,
     { includeMetadataChanges: true },
     (snapshot) => {
-      const products: Product[] = snapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data(),
-      })) as Product[];
+      const products: Product[] = snapshot.docs.map((docSnap) => {
+        const cleanData = sanitizeDocData(docSnap.data());
+        return {
+          id: docSnap.id,
+          ...cleanData,
+          name: sanitizeString(cleanData.name, 'Sem nome'),
+          unit: sanitizeString(cleanData.unit, 'un'),
+          category: sanitizeString(cleanData.category, 'Geral'),
+          stockQuantity: sanitizeNumber(cleanData.stockQuantity, 0),
+          price: sanitizeNumber(cleanData.price, 0),
+          costPrice: sanitizeNumber(cleanData.costPrice, 0),
+        } as Product;
+      });
       callback(products);
     },
     (err) => console.warn('subscribeProducts error:', err)
@@ -321,11 +425,30 @@ export function subscribeSales(
     q,
     { includeMetadataChanges: true },
     (snapshot) => {
-      const sales: Sale[] = snapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        hasPendingWrites: docSnap.metadata.hasPendingWrites,
-        ...docSnap.data(),
-      })) as Sale[];
+      const sales: Sale[] = snapshot.docs.map((docSnap) => {
+        const cleanData = sanitizeDocData(docSnap.data());
+        return {
+          id: docSnap.id,
+          hasPendingWrites: docSnap.metadata.hasPendingWrites,
+          ...cleanData,
+          customerName: sanitizeString(cleanData.customerName, 'Cliente Avulso'),
+          sellerName: sanitizeString(cleanData.sellerName, 'Vendedor'),
+          notes: sanitizeString(cleanData.notes, ''),
+          totalAmount: sanitizeNumber(cleanData.totalAmount, 0),
+          paidAmount: sanitizeNumber(cleanData.paidAmount, 0),
+          remainingAmount: sanitizeNumber(cleanData.remainingAmount, 0),
+          items: Array.isArray(cleanData.items)
+            ? cleanData.items.map((item: any) => ({
+                ...item,
+                productName: sanitizeString(item.productName, 'Produto'),
+                unit: sanitizeString(item.unit, 'un'),
+                quantity: sanitizeNumber(item.quantity, 1),
+                unitPrice: sanitizeNumber(item.unitPrice, 0),
+                subtotal: sanitizeNumber(item.subtotal, 0),
+              }))
+            : [],
+        } as Sale;
+      });
       callback(sales, snapshot.metadata);
     },
     (err) => console.warn('subscribeSales error:', err)
@@ -482,10 +605,18 @@ export function subscribePayments(
     q,
     { includeMetadataChanges: true },
     (snapshot) => {
-      const payments: Payment[] = snapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data(),
-      })) as Payment[];
+      const payments: Payment[] = snapshot.docs.map((docSnap) => {
+        const cleanData = sanitizeDocData(docSnap.data());
+        return {
+          id: docSnap.id,
+          ...cleanData,
+          customerName: sanitizeString(cleanData.customerName, ''),
+          sellerName: sanitizeString(cleanData.sellerName, ''),
+          notes: sanitizeString(cleanData.notes, ''),
+          amount: sanitizeNumber(cleanData.amount, 0),
+          remainingDebtAfter: sanitizeNumber(cleanData.remainingDebtAfter, 0),
+        } as Payment;
+      });
       callback(payments, snapshot.metadata);
     },
     (err) => console.warn('subscribePayments error:', err)
@@ -568,10 +699,16 @@ export function subscribeSellers(
   return onSnapshot(
     q,
     (snapshot) => {
-      const sellers: Seller[] = snapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data(),
-      })) as Seller[];
+      const sellers: Seller[] = snapshot.docs.map((docSnap) => {
+        const cleanData = sanitizeDocData(docSnap.data());
+        return {
+          id: docSnap.id,
+          ...cleanData,
+          name: sanitizeString(cleanData.name, 'Vendedor'),
+          role: cleanData.role === 'owner' ? 'owner' : 'seller',
+          active: cleanData.active !== false,
+        } as Seller;
+      });
       callback(sellers);
     },
     (err) => console.warn('subscribeSellers error:', err)

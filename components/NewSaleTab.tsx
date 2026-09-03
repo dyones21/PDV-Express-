@@ -658,7 +658,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
             const qty = quantities[prod.id] || 0;
             const currentPrice = customPriceOverrides[prod.id] !== undefined ? customPriceOverrides[prod.id] : prod.price;
             const isSelected = qty > 0;
-            const stock = prod.stockQuantity !== undefined ? prod.stockQuantity : 0;
+            const stock = typeof prod.stockQuantity === 'number' ? prod.stockQuantity : 0;
             const isOverStock = qty > stock;
 
             return (
@@ -675,13 +675,13 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="font-bold text-sm text-neutral-900 truncate">
-                      {prod.name}
+                      {typeof prod.name === 'string' && prod.name ? prod.name : 'Produto'}
                     </div>
                     <div className="flex items-center gap-2 text-xs text-neutral-600 mt-0.5 flex-wrap">
                       <span className="font-semibold text-amber-900">
                         {formatCurrency(currentPrice)}
                       </span>
-                      <span className="text-neutral-400">/ {prod.unit || 'peça'}</span>
+                      <span className="text-neutral-400">/ {typeof prod.unit === 'string' && prod.unit ? prod.unit : 'peça'}</span>
                       <span className="text-neutral-300">•</span>
                       <span
                         className={`text-[11px] font-semibold ${
@@ -692,7 +692,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
                             : 'text-neutral-500'
                         }`}
                       >
-                        Estoque: {stock} {prod.unit || 'un'}
+                        Estoque: {stock} {typeof prod.unit === 'string' && prod.unit ? prod.unit : 'un'}
                       </span>
                     </div>
                   </div>
@@ -728,7 +728,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
                 {isSelected && isOverStock && (
                   <div className="mt-2 text-[11px] text-amber-800 bg-amber-100/80 px-2 py-1 rounded-lg font-medium flex items-center gap-1">
                     <span>⚠️</span>
-                    <span>Qtd ({qty}) excede o estoque cadastrado ({stock} {prod.unit || 'un'}). A venda será permitida normalmente.</span>
+                    <span>Qtd ({qty}) excede o estoque cadastrado ({stock} {typeof prod.unit === 'string' && prod.unit ? prod.unit : 'un'}). A venda será permitida normalmente.</span>
                   </div>
                 )}
 

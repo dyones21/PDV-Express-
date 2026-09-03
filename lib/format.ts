@@ -1,5 +1,23 @@
-export function formatCurrency(value: number | undefined | null): string {
-  if (value === undefined || value === null || isNaN(value)) {
+export function formatCurrency(value: number | undefined | null | any): string {
+  if (value === undefined || value === null || typeof value !== 'number' || isNaN(value)) {
+    if (value && typeof value === 'object') {
+      if ('_operand' in value && typeof value._operand === 'number') {
+        return value._operand.toLocaleString('pt-BR', {
+          style: 'currency',
+          currency: 'BRL',
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+      }
+      if ('ar' in value && typeof value.ar === 'number') {
+        return value.ar.toLocaleString('pt-BR', {
+          style: 'currency',
+          currency: 'BRL',
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+      }
+    }
     return 'R$ 0,00';
   }
   return value.toLocaleString('pt-BR', {
@@ -15,7 +33,7 @@ export function formatCurrency(value: number | undefined | null): string {
  * inserting digits from right to left (e.g., '12345' -> 'R$ 123,45').
  */
 export function formatCurrencyInput(value: string | number | undefined | null): string {
-  if (value === undefined || value === null || value === '') return '';
+  if (value === undefined || value === null || value === '' || typeof value === 'object') return '';
   let digits = '';
   if (typeof value === 'number') {
     if (isNaN(value) || value <= 0) return '';
@@ -43,7 +61,7 @@ export function formatCurrencyInput(value: string | number | undefined | null): 
  * Parses a currency string or number to a pure float in Reais (e.g. 'R$ 123,45' -> 123.45).
  */
 export function parseCurrencyToNumber(value: string | number | undefined | null): number {
-  if (value === undefined || value === null || value === '') return 0;
+  if (value === undefined || value === null || value === '' || typeof value === 'object') return 0;
   if (typeof value === 'number') return isNaN(value) ? 0 : value;
   const digits = String(value).replace(/\D/g, '');
   if (!digits) return 0;
@@ -54,8 +72,8 @@ export function parseCurrencyToNumber(value: string | number | undefined | null)
  * Formats phone numbers automatically: (XX) XXXXX-XXXX for cellphones (11 digits)
  * or (XX) XXXX-XXXX for landlines (10 digits).
  */
-export function formatPhone(value: string | undefined | null): string {
-  if (!value) return '';
+export function formatPhone(value: string | undefined | null | any): string {
+  if (!value || typeof value !== 'string') return '';
   const digits = value.replace(/\D/g, '').slice(0, 11);
   if (!digits) return '';
 
@@ -74,8 +92,8 @@ export function formatPhone(value: string | undefined | null): string {
 /**
  * Formats CPF numbers: XXX.XXX.XXX-XX (up to 11 digits).
  */
-export function formatCpf(value: string | undefined | null): string {
-  if (!value) return '';
+export function formatCpf(value: string | undefined | null | any): string {
+  if (!value || typeof value !== 'string') return '';
   const digits = value.replace(/\D/g, '').slice(0, 11);
   if (!digits) return '';
 
@@ -91,8 +109,8 @@ export function formatCpf(value: string | undefined | null): string {
   return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9, 11)}`;
 }
 
-export function formatDateBr(dateString: string | undefined | null): string {
-  if (!dateString) return '';
+export function formatDateBr(dateString: string | undefined | null | any): string {
+  if (!dateString || typeof dateString !== 'string') return '';
   try {
     // If YYYY-MM-DD
     if (dateString.length === 10 && dateString.includes('-')) {
@@ -107,8 +125,8 @@ export function formatDateBr(dateString: string | undefined | null): string {
   }
 }
 
-export function formatDateTimeBr(isoString: string | undefined | null): string {
-  if (!isoString) return '';
+export function formatDateTimeBr(isoString: string | undefined | null | any): string {
+  if (!isoString || typeof isoString !== 'string') return '';
   try {
     const d = new Date(isoString);
     if (isNaN(d.getTime())) return isoString;

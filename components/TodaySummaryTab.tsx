@@ -313,7 +313,7 @@ export function TodaySummaryTab({
                 <div className="flex-1 min-w-0 pr-3">
                   <div className="flex items-center gap-1.5">
                     <span className="font-bold text-sm text-neutral-900 truncate">
-                      {sale.customerName}
+                      {typeof sale.customerName === 'string' ? sale.customerName : 'Cliente'}
                     </span>
                     {sale.hasPendingWrites && (
                       <span
@@ -327,12 +327,12 @@ export function TodaySummaryTab({
 
                   {/* Cheese Items Summary */}
                   <div className="text-xs text-neutral-600 truncate mt-0.5">
-                    {sale.items.map((i) => `${i.quantity}x ${i.productName}`).join(', ')}
+                    {Array.isArray(sale.items) ? sale.items.map((i) => `${typeof i.quantity === 'number' ? i.quantity : 1}x ${typeof i.productName === 'string' ? i.productName : 'Produto'}`).join(', ') : ''}
                   </div>
 
                   <div className="flex items-center gap-2 text-[11px] text-neutral-400 mt-1">
-                    <span>Por: {sale.sellerName?.split(' ')[0] || 'Vendedor'}</span>
-                    {sale.notes && <span className="italic truncate max-w-[120px]"> • {sale.notes}</span>}
+                    <span>Por: {typeof sale.sellerName === 'string' ? sale.sellerName.split(' ')[0] : 'Vendedor'}</span>
+                    {typeof sale.notes === 'string' && sale.notes ? <span className="italic truncate max-w-[120px]"> • {sale.notes}</span> : null}
                   </div>
                 </div>
 

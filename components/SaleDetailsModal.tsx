@@ -136,12 +136,12 @@ export function SaleDetailsModal({ sale, onClose }: SaleDetailsModalProps) {
               Cliente
             </div>
             <div className="text-sm font-bold text-neutral-900 mt-0.5">
-              {sale.customerName}
+              {typeof sale.customerName === 'string' ? sale.customerName : 'Cliente'}
             </div>
             {(sale.customerReferencePoint || sale.customerAddress) && (
               <div className="flex items-center gap-1 text-neutral-600 mt-1">
                 <MapPin className="w-3 h-3 text-amber-700 flex-shrink-0" />
-                <span>{sale.customerReferencePoint || sale.customerAddress}</span>
+                <span>{typeof sale.customerReferencePoint === 'string' && sale.customerReferencePoint ? sale.customerReferencePoint : (typeof sale.customerAddress === 'string' ? sale.customerAddress : '')}</span>
               </div>
             )}
           </div>
@@ -152,11 +152,11 @@ export function SaleDetailsModal({ sale, onClose }: SaleDetailsModalProps) {
               Produtos
             </div>
             <div className="divide-y divide-neutral-100 border border-neutral-200 rounded-xl overflow-hidden bg-white">
-              {sale.items.map((item, idx) => (
+              {(Array.isArray(sale.items) ? sale.items : []).map((item, idx) => (
                 <div key={idx} className="p-2.5 flex items-center justify-between">
                   <div>
                     <span className={`font-bold ${isCancelled ? 'line-through text-neutral-400' : 'text-neutral-900'}`}>
-                      {item.quantity}x {item.productName}
+                      {typeof item.quantity === 'number' ? item.quantity : 1}x {typeof item.productName === 'string' ? item.productName : 'Produto'}
                     </span>
                     <span className="text-neutral-400 block text-[10px]">
                       {formatCurrency(item.unitPrice)} cada
@@ -210,7 +210,7 @@ export function SaleDetailsModal({ sale, onClose }: SaleDetailsModalProps) {
                   ? 'Cancelada'
                   : sale.paymentStatus === 'paid'
                   ? 'Pago à Vista'
-                  : 'Fiado'} ({sale.paymentMethod})
+                  : 'Fiado'} ({typeof sale.paymentMethod === 'string' ? sale.paymentMethod : 'dinheiro'})
               </span>
             </div>
           </div>
@@ -218,7 +218,7 @@ export function SaleDetailsModal({ sale, onClose }: SaleDetailsModalProps) {
           {/* Operator & Location */}
           <div className="flex flex-col gap-1.5 text-[11px] text-neutral-500 px-1">
             <div className="flex justify-between">
-              <span>Registrado por: <strong>{sale.sellerName}</strong></span>
+              <span>Registrado por: <strong>{typeof sale.sellerName === 'string' ? sale.sellerName : 'Vendedor'}</strong></span>
               <span>Data: {formatDateBr(sale.saleDate)}</span>
             </div>
 
@@ -243,7 +243,7 @@ export function SaleDetailsModal({ sale, onClose }: SaleDetailsModalProps) {
             )}
           </div>
 
-          {sale.notes && (
+          {typeof sale.notes === 'string' && sale.notes && (
             <div className="p-2 bg-amber-50 rounded-lg text-amber-900 text-[11px] italic">
               Obs: {sale.notes}
             </div>

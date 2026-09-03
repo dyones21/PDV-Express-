@@ -79,17 +79,19 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
 
   // Filtered products
   const filteredProducts = products.filter((p) => {
-    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (p.category && p.category.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesCategory = selectedCategory === 'todos' || (p.category || 'Geral') === selectedCategory;
+    const pName = typeof p.name === 'string' ? p.name : '';
+    const pCategory = typeof p.category === 'string' ? p.category : '';
+    const matchesSearch = pName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      pCategory.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = selectedCategory === 'todos' || (pCategory || 'Geral') === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
   // Aggregate Metrics
-  const totalStockCount = products.reduce((acc, p) => acc + (p.stockQuantity || 0), 0);
-  const totalStockCostValue = products.reduce((acc, p) => acc + ((p.costPrice || 0) * (p.stockQuantity || 0)), 0);
-  const totalStockSaleValue = products.reduce((acc, p) => acc + (p.price * (p.stockQuantity || 0)), 0);
-  const lowStockCount = products.filter((p) => (p.stockQuantity || 0) < 5 && p.active !== false).length;
+  const totalStockCount = products.reduce((acc, p) => acc + (typeof p.stockQuantity === 'number' ? p.stockQuantity : 0), 0);
+  const totalStockCostValue = products.reduce((acc, p) => acc + ((typeof p.costPrice === 'number' ? p.costPrice : 0) * (typeof p.stockQuantity === 'number' ? p.stockQuantity : 0)), 0);
+  const totalStockSaleValue = products.reduce((acc, p) => acc + ((typeof p.price === 'number' ? p.price : 0) * (typeof p.stockQuantity === 'number' ? p.stockQuantity : 0)), 0);
+  const lowStockCount = products.filter((p) => (typeof p.stockQuantity === 'number' ? p.stockQuantity : 0) < 5 && p.active !== false).length;
 
   const handleOpenNew = () => {
     setEditingProduct(null);
@@ -109,14 +111,14 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
 
   const handleOpenEdit = (p: Product) => {
     setEditingProduct(p);
-    setName(p.name);
-    setPrice(p.price !== undefined ? formatCurrencyInput(p.price) : '');
-    setCostPrice(p.costPrice !== undefined ? formatCurrencyInput(p.costPrice) : '');
+    setName(p.name || '');
+    setPrice(p.price !== undefined && p.price !== null ? formatCurrencyInput(p.price) : '');
+    setCostPrice(p.costPrice !== undefined && p.costPrice !== null ? formatCurrencyInput(p.costPrice) : '');
     setIsWeightCostMode(false);
     setWeightTotalKg('');
     setWeightTotalPaid('');
     setWeightYieldUnits('');
-    const initialStock = p.stockQuantity !== undefined ? p.stockQuantity : 0;
+    const initialStock = p.stockQuantity !== undefined && p.stockQuantity !== null ? p.stockQuantity : 0;
     setStockQuantity(initialStock.toString());
     setBaseStockQty(initialStock);
     setUnit(p.unit || 'un');
@@ -445,10 +447,11 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
           </div>
         ) : (
           filteredProducts.map((prod) => {
-            const stock = prod.stockQuantity !== undefined ? prod.stockQuantity : 0;
+            const stock = typeof prod.stockQuantity === 'number' ? prod.stockQuantity : 0;
             const cost = prod.costPrice || 0;
-            const profit = prod.price - cost;
-            const margin = prod.price > 0 && cost > 0 ? Math.round((profit / prod.price) * 100) : null;
+            const priceVal = prod.price || 0;
+            const profit = priceVal - cost;
+            const margin = priceVal > 0 && cost > 0 ? Math.round((profit / priceVal) * 100) : null;
             const isLowStock = stock < 5;
             const isOut = stock <= 0;
 
@@ -471,7 +474,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <h3 className="font-bold text-sm text-neutral-900 truncate">
-                        {prod.name}
+                        {typeof prod.name === 'string' && prod.name ? prod.name : 'Sem nome'}
                       </h3>
                       {!prod.active && (
                         <span className="text-[10px] font-bold text-neutral-500 bg-neutral-200 px-1.5 py-0.5 rounded">
@@ -480,9 +483,9 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                       )}
                     </div>
                     <div className="text-xs text-neutral-500 mt-0.5 flex items-center gap-1.5">
-                      <span>{prod.category || 'Geral'}</span>
+                      <span>{typeof prod.category === 'string' && prod.category ? prod.category : 'Geral'}</span>
                       <span>•</span>
-                      <span>Unidade: {prod.unit || 'un'}</span>
+                      <span>Unidade: {typeof prod.unit === 'string' && prod.unit ? prod.unit : 'un'}</span>
                     </div>
                   </div>
 
@@ -518,7 +521,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                   <div>
                     <div className="text-[10px] text-neutral-500 uppercase font-semibold">Preço de Venda</div>
                     <div className="text-sm font-extrabold text-neutral-900">
-                      {formatCurrency(prod.price)}
+                      {formatCurrency(prod.price || 0)}
                     </div>
                   </div>
 
@@ -863,10 +866,10 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
               <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-xs">
                 <div className="text-[10px] text-amber-800 font-semibold uppercase">Produto Selecionado</div>
                 <div className="font-extrabold text-sm text-neutral-900 mt-0.5">
-                  {restockProductTarget.name}
+                  {typeof restockProductTarget.name === 'string' && restockProductTarget.name ? restockProductTarget.name : 'Sem nome'}
                 </div>
                 <div className="text-xs text-neutral-600 mt-0.5">
-                  Estoque atual: <span className="font-bold text-amber-900">{restockProductTarget.stockQuantity || 0} {restockProductTarget.unit || 'peças'}</span>
+                  Estoque atual: <span className="font-bold text-amber-900">{typeof restockProductTarget.stockQuantity === 'number' ? restockProductTarget.stockQuantity : 0} {typeof restockProductTarget.unit === 'string' && restockProductTarget.unit ? restockProductTarget.unit : 'peças'}</span>
                 </div>
               </div>
 
@@ -914,7 +917,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                       id="input-restock-cost"
                       type="text"
                       inputMode="numeric"
-                      placeholder={restockProductTarget.costPrice ? `Atual: ${formatCurrency(restockProductTarget.costPrice)}` : 'R$ 0,00'}
+                      placeholder={(restockProductTarget.costPrice || 0) > 0 ? `Atual: ${formatCurrency(restockProductTarget.costPrice || 0)}` : 'R$ 0,00'}
                       value={restockCost}
                       onChange={(e) => setRestockCost(formatCurrencyInput(e.target.value))}
                       className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500"
@@ -932,7 +935,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                       id="input-restock-sale-price"
                       type="text"
                       inputMode="numeric"
-                      placeholder={restockProductTarget.price ? `Atual: ${formatCurrency(restockProductTarget.price)}` : 'R$ 0,00'}
+                      placeholder={(restockProductTarget.price || 0) > 0 ? `Atual: ${formatCurrency(restockProductTarget.price || 0)}` : 'R$ 0,00'}
                       value={restockSalePrice}
                       onChange={(e) => setRestockSalePrice(formatCurrencyInput(e.target.value))}
                       className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500"
@@ -1016,7 +1019,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                       id="input-restock-weight-sale-price"
                       type="text"
                       inputMode="numeric"
-                      placeholder={restockProductTarget.price ? `Atual: ${formatCurrency(restockProductTarget.price)}` : 'R$ 0,00'}
+                      placeholder={(restockProductTarget.price || 0) > 0 ? `Atual: ${formatCurrency(restockProductTarget.price || 0)}` : 'R$ 0,00'}
                       value={restockSalePrice}
                       onChange={(e) => setRestockSalePrice(formatCurrencyInput(e.target.value))}
                       className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500 bg-white"
@@ -1033,7 +1036,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                 <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 text-xs flex justify-between items-center text-emerald-950 font-semibold">
                   <span>Novo Estoque Total:</span>
                   <span className="text-sm font-extrabold text-emerald-800">
-                    {(restockProductTarget.stockQuantity || 0) + restockAddedQty} {restockProductTarget.unit || 'peças'}
+                    {(typeof restockProductTarget.stockQuantity === 'number' ? restockProductTarget.stockQuantity : 0) + restockAddedQty} {typeof restockProductTarget.unit === 'string' && restockProductTarget.unit ? restockProductTarget.unit : 'peças'}
                   </span>
                 </div>
               )}
