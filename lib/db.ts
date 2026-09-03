@@ -10,7 +10,6 @@ import {
   onSnapshot,
   query,
   orderBy,
-  where,
   serverTimestamp,
   SnapshotMetadata,
 } from 'firebase/firestore';
@@ -493,6 +492,13 @@ export function subscribePayments(
   );
 }
 
+export interface SalePaymentUpdate {
+  saleId: string;
+  newPaidAmount: number;
+  newRemainingAmount: number;
+  newStatus: 'paid' | 'partial';
+}
+
 export async function recordPayment(
   businessId = DEFAULT_BUSINESS_ID,
   paymentData: {
@@ -505,7 +511,8 @@ export async function recordPayment(
     paymentDate: string;
     notes?: string;
     saleId?: string; // Optional target sale
-  }
+  },
+  saleUpdates?: SalePaymentUpdate[]
 ): Promise<string> {
   await ensureAuthSession();
   const nowIso = new Date().toISOString();
@@ -530,56 +537,22 @@ export async function recordPayment(
     }
   }
 
-  // 3. If specific saleId is provided or if we can auto-settle pending sales for customer
-  try {
-    if (paymentData.saleId) {
-      const sRef = doc(getSalesCol(businessId), paymentData.saleId);
-      const sSnap = await getDoc(sRef);
-      if (sSnap.exists()) {
-        const sData = sSnap.data() as Sale;
-        const currentRemaining = Number(sData.remainingAmount || 0);
-        const currentPaid = Number(sData.paidAmount || 0);
-        const newRemaining = Math.max(0, currentRemaining - paymentData.amount);
-        const newPaid = currentPaid + paymentData.amount;
-        const newStatus = newRemaining === 0 ? 'paid' : 'partial';
-
+  // 3. Update settled sales (using pre-calculated updates without reading Firestore)
+  if (saleUpdates && saleUpdates.length > 0) {
+    for (const update of saleUpdates) {
+      try {
+        const sRef = doc(getSalesCol(businessId), update.saleId);
         await updateDoc(sRef, cleanUndefined({
-          paidAmount: newPaid,
-          remainingAmount: newRemaining,
-          paymentStatus: newStatus,
+          paidAmount: update.newPaidAmount,
+          remainingAmount: update.newRemainingAmount,
+          paymentStatus: update.newStatus,
+          updatedAt: nowIso,
         }));
-      }
-    } else if (paymentData.customerId) {
-      // Auto-apply payment against oldest pending sales for this customer
-      const qPending = query(
-        getSalesCol(businessId),
-        where('customerId', '==', paymentData.customerId),
-        where('paymentStatus', 'in', ['pending', 'partial']),
-        orderBy('createdAt', 'asc')
-      );
-      const pendingSnaps = await getDocs(qPending);
-      let moneyLeft = paymentData.amount;
-
-      for (const sDoc of pendingSnaps.docs) {
-        if (moneyLeft <= 0) break;
-        const sData = sDoc.data() as Sale;
-        const remaining = Number(sData.remainingAmount || 0);
-        const paidNow = Math.min(moneyLeft, remaining);
-        const newRemaining = remaining - paidNow;
-        const newPaid = Number(sData.paidAmount || 0) + paidNow;
-        const newStatus = newRemaining === 0 ? 'paid' : 'partial';
-
-        await updateDoc(sDoc.ref, cleanUndefined({
-          paidAmount: newPaid,
-          remainingAmount: newRemaining,
-          paymentStatus: newStatus,
-        }));
-
-        moneyLeft -= paidNow;
+      } catch (e: any) {
+        console.error(`Erro ao atualizar venda ${update.saleId}:`, e);
+        throw new Error(`Pagamento registrado, mas houve erro ao atualizar a venda: ${e?.message || e}`);
       }
     }
-  } catch (e) {
-    console.warn('Auto-settle sales warning (offline safe):', e);
   }
 
   return payRef.id;

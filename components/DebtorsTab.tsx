@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Customer, Sale, PaymentMethod } from '@/types';
 import { formatCurrency, formatCurrencyInput, parseCurrencyToNumber, formatDateBr, getTodayDateString } from '@/lib/format';
-import { recordPayment } from '@/lib/db';
+import { recordPayment, SalePaymentUpdate } from '@/lib/db';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
 import { useNetworkSync } from '@/hooks/use-network-sync';
 import { 
@@ -100,6 +100,39 @@ export function DebtorsTab({ customers, sales, onOpenSaleDetails }: DebtorsTabPr
       return;
     }
 
+    // Filter customer's open/partial sales and sort from oldest to newest (by createdAt)
+    const customerPendingSales = sales
+      .filter(
+        (s) =>
+          s.customerId === settleCustomer.id &&
+          !s.isCancelled &&
+          s.paymentStatus !== 'cancelled' &&
+          (s.paymentStatus === 'pending' || s.paymentStatus === 'partial')
+      )
+      .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+
+    let moneyLeft = amountToPay;
+    const saleUpdates: SalePaymentUpdate[] = [];
+
+    for (const s of customerPendingSales) {
+      if (moneyLeft <= 0) break;
+      const remaining = Number(s.remainingAmount || 0);
+      if (remaining <= 0) continue;
+      const paidNow = Math.min(moneyLeft, remaining);
+      const newRemaining = Math.max(0, remaining - paidNow);
+      const newPaid = Number(s.paidAmount || 0) + paidNow;
+      const newStatus: 'paid' | 'partial' = newRemaining === 0 ? 'paid' : 'partial';
+
+      saleUpdates.push({
+        saleId: s.id,
+        newPaidAmount: newPaid,
+        newRemainingAmount: newRemaining,
+        newStatus,
+      });
+
+      moneyLeft -= paidNow;
+    }
+
     const resetSettleForm = () => {
       setSettleCustomer(null);
       setCustomAmountInput('');
@@ -110,16 +143,20 @@ export function DebtorsTab({ customers, sales, onOpenSaleDetails }: DebtorsTabPr
       setIsSubmitting(true);
 
       const paymentOperation = async () => {
-        await recordPayment(undefined, {
-          customerId: settleCustomer.id,
-          customerName: settleCustomer.name,
-          amount: amountToPay,
-          sellerId: activeSeller?.id || 'vendedor',
-          sellerName: activeSeller?.name || 'Vendedor',
-          paymentMethod,
-          paymentDate: getTodayDateString(),
-          notes: notes.trim() || undefined,
-        });
+        await recordPayment(
+          undefined,
+          {
+            customerId: settleCustomer.id,
+            customerName: settleCustomer.name,
+            amount: amountToPay,
+            sellerId: activeSeller?.id || 'vendedor',
+            sellerName: activeSeller?.name || 'Vendedor',
+            paymentMethod,
+            paymentDate: getTodayDateString(),
+            notes: notes.trim() || undefined,
+          },
+          saleUpdates
+        );
         return { success: true };
       };
 
