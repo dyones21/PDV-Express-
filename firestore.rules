@@ -27,10 +27,12 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // User to Business mapping (only readable and writable by document owner, never listed by others)
+    // User to Business mapping (only readable by document owner, creation only for non-existing business, never updated or deleted)
     match /userBusinessMap/{uid} {
       allow read: if isAuthenticated() && request.auth.uid == uid;
-      allow write: if isAuthenticated() && request.auth.uid == uid;
+      allow create: if isAuthenticated() && request.auth.uid == uid
+        && !exists(/databases/$(database)/documents/businesses/$(request.resource.data.businessId));
+      allow update, delete: if false;
     }
 
     // Multi-tenant business documents and collections
