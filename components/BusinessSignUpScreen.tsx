@@ -20,12 +20,19 @@ export function BusinessSignUpScreen({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [honeypot, setHoneypot] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+
+    // Proteção anti-bot: se o campo invisível foi preenchido, aborta sem chamar o Firebase
+    if (honeypot.trim()) {
+      setErrorMessage('Não foi possível completar o cadastro.');
+      return;
+    }
 
     const cleanBusinessName = businessName.trim();
     const cleanEmail = email.trim();
@@ -63,13 +70,13 @@ export function BusinessSignUpScreen({
         updatedAt: new Date().toISOString(),
       });
 
-      // 4. Cria documento businesses/{newBusinessId}
+      // 4. Cria documento businesses/{newBusinessId} (inicia desativado aguardando aprovação no /admin)
       await setDoc(doc(db, 'businesses', newBusinessId), {
         id: newBusinessId,
         name: cleanBusinessName,
         ownerEmail: cleanEmail,
         createdAt: new Date().toISOString(),
-        active: true,
+        active: false,
       });
 
       // 5. Inicializa dados padrão do negócio (vendedor principal PIN 1234, produtos exemplo)
@@ -141,6 +148,19 @@ export function BusinessSignUpScreen({
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Campo invisível anti-bot (honeypot) posicionado fora da tela */}
+            <div className="absolute -left-[9999px] -top-[9999px] opacity-0 pointer-events-none" aria-hidden="true">
+              <input
+                type="text"
+                id="empresa_confirmacao"
+                name="empresa_confirmacao"
+                tabIndex={-1}
+                autoComplete="off"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+              />
+            </div>
+
             {/* Business Name Field */}
             <div>
               <label className="block text-xs font-bold text-neutral-700 mb-1.5" htmlFor="signup-business-name">

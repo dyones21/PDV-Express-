@@ -337,9 +337,9 @@ export default function HomePage() {
           <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3 text-amber-800">
             <AlertCircle className="w-6 h-6 text-amber-700" />
           </div>
-          <h2 className="text-lg font-bold text-neutral-900">Acesso Suspenso</h2>
+          <h2 className="text-lg font-bold text-neutral-900">Acesso ainda não liberado</h2>
           <p className="text-sm text-neutral-700 mt-2">
-            Assinatura inativa. Entre em contato com o suporte para reativar.
+            Se você acabou de se cadastrar, aguarde a aprovação. Em caso de dúvida, entre em contato com o suporte.
           </p>
 
           <div className="mt-4 p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-xs text-neutral-600 break-all text-left">
