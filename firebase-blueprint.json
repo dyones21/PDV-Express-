@@ -5,11 +5,21 @@
       "description": "Dados da empresa/negócio MEI",
       "type": "object",
       "properties": {
+        "id": { "type": "string" },
         "name": { "type": "string" },
         "ownerEmail": { "type": "string" },
+        "active": { "type": "boolean" },
         "createdAt": { "type": "string" }
       },
       "required": ["name"]
+    },
+    "PlatformAdmin": {
+      "title": "PlatformAdmin",
+      "description": "Administrador da plataforma",
+      "type": "object",
+      "properties": {
+        "addedAt": { "type": "string" }
+      }
     },
     "Seller": {
       "title": "Seller",
@@ -102,6 +112,10 @@
     }
   },
   "firestore": {
+    "platformAdmins/{uid}": {
+      "schema": "PlatformAdmin",
+      "description": "Administradores globais da plataforma (controle de assinaturas)"
+    },
     "userBusinessMap/{uid}": {
       "schema": "UserBusinessMap",
       "description": "Mapeamento do UID do Firebase Auth para o negócio MEI"

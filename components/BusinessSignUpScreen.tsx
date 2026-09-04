@@ -1,16 +1,22 @@
 'use client';
 
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
-import { ShoppingBag, Lock, Mail, Eye, EyeOff, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { collection, doc, setDoc } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
+import { ensureDefaultBusinessData } from '@/lib/db';
+import { ShoppingBag, Lock, Mail, Building2, Eye, EyeOff, AlertCircle, ArrowRight, Sparkles } from 'lucide-react';
 
-interface DeviceLoginScreenProps {
-  onLoginSuccess?: () => void;
-  onNavigateToSignUp?: () => void;
+interface BusinessSignUpScreenProps {
+  onNavigateToLogin?: () => void;
+  onSignUpSuccess?: () => void;
 }
 
-export function DeviceLoginScreen({ onLoginSuccess, onNavigateToSignUp }: DeviceLoginScreenProps) {
+export function BusinessSignUpScreen({
+  onNavigateToLogin,
+  onSignUpSuccess,
+}: BusinessSignUpScreenProps) {
+  const [businessName, setBusinessName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -21,36 +27,71 @@ export function DeviceLoginScreen({ onLoginSuccess, onNavigateToSignUp }: Device
     e.preventDefault();
     setErrorMessage(null);
 
+    const cleanBusinessName = businessName.trim();
     const cleanEmail = email.trim();
+
+    if (!cleanBusinessName) {
+      setErrorMessage('Por favor, informe o nome do seu negócio.');
+      return;
+    }
+
     if (!cleanEmail) {
-      setErrorMessage('Por favor, informe seu e-mail.');
+      setErrorMessage('Por favor, informe o e-mail do responsável.');
       return;
     }
 
     if (!password || password.length < 6) {
-      setErrorMessage('A senha deve ter pelo menos 6 caracteres.');
+      setErrorMessage('A senha deve ter no mínimo 6 caracteres.');
       return;
     }
 
     setIsLoading(true);
 
     try {
-      await signInWithEmailAndPassword(auth, cleanEmail, password);
-      if (onLoginSuccess) {
-        onLoginSuccess();
+      // 1. Cria o usuário no Firebase Auth
+      const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+      const uid = cred.user.uid;
+
+      // 2. Gera um novo businessId único do Firestore
+      const newBusinessId = doc(collection(db, 'businesses')).id;
+
+      // 3. Cria documento userBusinessMap/{uid}
+      await setDoc(doc(db, 'userBusinessMap', uid), {
+        businessId: newBusinessId,
+        businessName: cleanBusinessName,
+        role: 'owner',
+        updatedAt: new Date().toISOString(),
+      });
+
+      // 4. Cria documento businesses/{newBusinessId}
+      await setDoc(doc(db, 'businesses', newBusinessId), {
+        id: newBusinessId,
+        name: cleanBusinessName,
+        ownerEmail: cleanEmail,
+        createdAt: new Date().toISOString(),
+        active: true,
+      });
+
+      // 5. Inicializa dados padrão do negócio (vendedor principal PIN 1234, produtos exemplo)
+      await ensureDefaultBusinessData(newBusinessId, cleanBusinessName);
+
+      if (onSignUpSuccess) {
+        onSignUpSuccess();
       }
     } catch (err: unknown) {
-      console.warn('Erro na autenticação do dispositivo:', err);
+      console.error('Erro ao cadastrar novo negócio:', err);
       const errCode = (err as { code?: string })?.code || '';
 
-      if (errCode === 'auth/invalid-credential' || errCode === 'auth/wrong-password' || errCode === 'auth/user-not-found') {
-        setErrorMessage('E-mail ou senha incorretos. Verifique suas credenciais.');
+      if (errCode === 'auth/email-already-in-use') {
+        setErrorMessage('Este e-mail já está cadastrado. Faça login ou use outro e-mail.');
+      } else if (errCode === 'auth/weak-password') {
+        setErrorMessage('A senha é muito fraca. Digite no mínimo 6 caracteres.');
       } else if (errCode === 'auth/invalid-email') {
-        setErrorMessage('Formato de e-mail inválido. Digite um e-mail válido.');
+        setErrorMessage('Formato de e-mail inválido. Verifique o endereço digitado.');
       } else if (errCode === 'auth/network-request-failed') {
-        setErrorMessage('Sem conexão com a internet. O primeiro acesso deste aparelho precisa de conexão.');
+        setErrorMessage('Sem conexão com a internet. Verifique sua rede e tente novamente.');
       } else {
-        setErrorMessage('Não foi possível entrar. Verifique seus dados ou fale com o suporte.');
+        setErrorMessage('Não foi possível concluir o cadastro. Verifique os dados e tente novamente.');
       }
     } finally {
       setIsLoading(false);
@@ -80,14 +121,14 @@ export function DeviceLoginScreen({ onLoginSuccess, onNavigateToSignUp }: Device
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-amber-200/80">
           <div className="border-b border-neutral-100 pb-4 mb-5">
             <div className="flex items-center gap-2 text-xs font-bold text-amber-800 uppercase tracking-wide">
-              <ShieldCheck className="w-4 h-4 text-amber-700" />
-              <span>Acesso do Dispositivo</span>
+              <Sparkles className="w-4 h-4 text-amber-700" />
+              <span>Novo Cadastro</span>
             </div>
             <h2 className="text-lg font-bold text-neutral-900 mt-1">
-              Conectar este Aparelho
+              Cadastrar Meu Negócio
             </h2>
             <p className="text-xs text-neutral-500 mt-1">
-              Faça login com a conta do proprietário para autorizar este celular.
+              Crie a conta do seu negócio para gerenciar rotas, vendedores e cobranças.
             </p>
           </div>
 
@@ -100,17 +141,38 @@ export function DeviceLoginScreen({ onLoginSuccess, onNavigateToSignUp }: Device
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Business Name Field */}
+            <div>
+              <label className="block text-xs font-bold text-neutral-700 mb-1.5" htmlFor="signup-business-name">
+                Nome do Negócio
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-400">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <input
+                  id="signup-business-name"
+                  type="text"
+                  required
+                  value={businessName}
+                  onChange={(e) => setBusinessName(e.target.value)}
+                  placeholder="Ex: Queijaria da Serra, Mercearia Silva"
+                  className="w-full pl-10 pr-3.5 py-3 text-sm rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
+                />
+              </div>
+            </div>
+
             {/* Email Field */}
             <div>
-              <label className="block text-xs font-bold text-neutral-700 mb-1.5" htmlFor="device-login-email">
-                E-mail do Proprietário
+              <label className="block text-xs font-bold text-neutral-700 mb-1.5" htmlFor="signup-email">
+                E-mail do Responsável
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-400">
                   <Mail className="w-4 h-4" />
                 </div>
                 <input
-                  id="device-login-email"
+                  id="signup-email"
                   type="email"
                   inputMode="email"
                   autoComplete="email"
@@ -125,26 +187,26 @@ export function DeviceLoginScreen({ onLoginSuccess, onNavigateToSignUp }: Device
 
             {/* Password Field */}
             <div>
-              <label className="block text-xs font-bold text-neutral-700 mb-1.5" htmlFor="device-login-password">
-                Senha
+              <label className="block text-xs font-bold text-neutral-700 mb-1.5" htmlFor="signup-password">
+                Senha (mínimo 6 caracteres)
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-400">
                   <Lock className="w-4 h-4" />
                 </div>
                 <input
-                  id="device-login-password"
+                  id="signup-password"
                   type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Sua senha"
+                  placeholder="Crie uma senha segura"
                   className="w-full pl-10 pr-11 py-3 text-sm rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
                 />
                 <button
                   type="button"
-                  id="btn-toggle-password-visibility"
+                  id="btn-toggle-signup-password"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-neutral-400 hover:text-neutral-600 transition"
                   title={showPassword ? 'Ocultar senha' : 'Exibir senha'}
@@ -157,43 +219,42 @@ export function DeviceLoginScreen({ onLoginSuccess, onNavigateToSignUp }: Device
             {/* Submit Button */}
             <button
               type="submit"
-              id="btn-device-submit-login"
+              id="btn-submit-signup"
               disabled={isLoading}
               className="w-full mt-2 min-h-[48px] bg-amber-700 hover:bg-amber-800 active:scale-[0.99] text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Conectando...</span>
+                  <span>Criando negócio...</span>
                 </div>
               ) : (
                 <>
-                  <span>Entrar</span>
+                  <span>Criar Conta e Começar</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
 
-          {onNavigateToSignUp && (
-            <div className="mt-5 pt-4 border-t border-neutral-100 text-center">
-              <button
-                type="button"
-                id="btn-go-to-signup"
-                onClick={onNavigateToSignUp}
-                className="text-xs font-semibold text-amber-800 hover:text-amber-900 underline transition"
-              >
-                Novo por aqui? Criar conta do seu negócio
-              </button>
-            </div>
-          )}
+          {/* Link back to login */}
+          <div className="mt-5 pt-4 border-t border-neutral-100 text-center">
+            <button
+              type="button"
+              id="btn-go-to-login"
+              onClick={onNavigateToLogin}
+              className="text-xs font-semibold text-amber-800 hover:text-amber-900 underline transition"
+            >
+              Já tenho conta cadastrada? Clique para Entrar
+            </button>
+          </div>
         </div>
 
         {/* Footer info */}
         <div className="text-center mt-6 text-xs text-neutral-500">
-          <p>O login permanece salvo neste celular.</p>
+          <p>Seu negócio será configurado com PIN inicial de vendedor: <strong>1234</strong></p>
           <p className="mt-0.5 text-[11px] text-neutral-400">
-            Depois de logado, os vendedores acessam apenas usando o PIN.
+            Você poderá alterar o PIN e criar outros vendedores a qualquer momento.
           </p>
         </div>
       </div>

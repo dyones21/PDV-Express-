@@ -1,34 +1,75 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // User to Business mapping
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isPlatformAdmin() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid));
+    }
+
+    function hasBusinessMap() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/userBusinessMap/$(request.auth.uid));
+    }
+
+    function getUserBusinessId() {
+      return get(/databases/$(database)/documents/userBusinessMap/$(request.auth.uid)).data.businessId;
+    }
+
+    function isOwnerOfBusiness(businessId) {
+      return hasBusinessMap() && getUserBusinessId() == businessId;
+    }
+
+    // Platform Admins collection (only checked internally by rules, never readable or writable via client SDK)
+    match /platformAdmins/{uid} {
+      allow read, write: if false;
+    }
+
+    // User to Business mapping (only readable and writable by document owner, never listed by others)
     match /userBusinessMap/{uid} {
-      allow read, write: if true;
+      allow read: if isAuthenticated() && request.auth.uid == uid;
+      allow write: if isAuthenticated() && request.auth.uid == uid;
     }
 
     // Multi-tenant business documents and collections
     match /businesses/{businessId} {
-      allow read, write: if true;
+      // Platform admin can read any business; owner can read only their own business
+      allow read: if isPlatformAdmin() || isOwnerOfBusiness(businessId);
+
+      // Creation allowed by platform admin or owner creating their business
+      allow create: if isAuthenticated() && (
+        isPlatformAdmin() || 
+        isOwnerOfBusiness(businessId) || 
+        request.resource.data.ownerEmail == request.auth.token.email
+      );
+
+      // Platform admin can toggle active. Owner CANNOT change the active field
+      allow update: if isPlatformAdmin() || (
+        isOwnerOfBusiness(businessId) && request.resource.data.active == resource.data.active
+      );
+
+      allow delete: if isPlatformAdmin();
 
       match /sellers/{sellerId} {
-        allow read, write: if true;
+        allow read, write: if isOwnerOfBusiness(businessId) || isPlatformAdmin();
       }
       
       match /customers/{customerId} {
-        allow read, write: if true;
+        allow read, write: if isOwnerOfBusiness(businessId) || isPlatformAdmin();
       }
       
       match /products/{productId} {
-        allow read, write: if true;
+        allow read, write: if isOwnerOfBusiness(businessId) || isPlatformAdmin();
       }
       
       match /sales/{saleId} {
-        allow read, write: if true;
+        allow read, write: if isOwnerOfBusiness(businessId) || isPlatformAdmin();
       }
       
       match /payments/{paymentId} {
-        allow read, write: if true;
+        allow read, write: if isOwnerOfBusiness(businessId) || isPlatformAdmin();
       }
     }
   }

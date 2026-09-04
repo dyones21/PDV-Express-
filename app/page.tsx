@@ -25,11 +25,13 @@ import { SaleDetailsModal } from '@/components/SaleDetailsModal';
 import { SellerSwitchModal } from '@/components/SellerSwitchModal';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
 import { DeviceLoginScreen } from '@/components/DeviceLoginScreen';
+import { BusinessSignUpScreen } from '@/components/BusinessSignUpScreen';
 import { BusinessProvider } from '@/context/BusinessContext';
 import { 
   auth, 
   resolveBusinessId, 
   resolveUserBusiness, 
+  getBusinessActiveStatus,
   DEFAULT_BUSINESS_ID as FALLBACK_BUSINESS_ID 
 } from '@/lib/firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
@@ -205,7 +207,9 @@ export default function HomePage() {
   const [currentUser, setCurrentUser] = useState<User | null | undefined>(undefined);
   const [resolvedBusinessId, setResolvedBusinessId] = useState<string | null | undefined>(undefined);
   const [businessName, setBusinessName] = useState<string>('Queijaria Artesanal da Serra');
+  const [isBusinessActive, setIsBusinessActive] = useState<boolean>(true);
   const [isResolving, setIsResolving] = useState<boolean>(false);
+  const [authView, setAuthView] = useState<'login' | 'signup'>('login');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -216,6 +220,8 @@ export default function HomePage() {
           const bId = await resolveBusinessId(user.uid);
           if (bId) {
             const bInfo = await resolveUserBusiness(user.uid);
+            const activeStatus = await getBusinessActiveStatus(bId);
+            setIsBusinessActive(activeStatus);
             setBusinessName(bInfo?.businessName || 'Queijaria Artesanal da Serra');
             setResolvedBusinessId(bId);
           } else {
@@ -247,9 +253,20 @@ export default function HomePage() {
     );
   }
 
-  // 2. Aparelho sem login real -> Exibir tela de login com email e senha
+  // 2. Aparelho sem login real -> Exibir tela de login ou criação de negócio
   if (!currentUser) {
-    return <DeviceLoginScreen />;
+    if (authView === 'signup') {
+      return (
+        <BusinessSignUpScreen
+          onNavigateToLogin={() => setAuthView('login')}
+        />
+      );
+    }
+    return (
+      <DeviceLoginScreen
+        onNavigateToSignUp={() => setAuthView('signup')}
+      />
+    );
   }
 
   // 3. Usuário logado, mas sem registro na coleção userBusinessMap
@@ -280,6 +297,8 @@ export default function HomePage() {
                   const bId = await resolveBusinessId(currentUser.uid);
                   if (bId) {
                     const bInfo = await resolveUserBusiness(currentUser.uid);
+                    const activeStatus = await getBusinessActiveStatus(bId);
+                    setIsBusinessActive(activeStatus);
                     setBusinessName(bInfo?.businessName || 'Queijaria Artesanal da Serra');
                     setResolvedBusinessId(bId);
                   }
@@ -310,7 +329,61 @@ export default function HomePage() {
     );
   }
 
-  // 4. Usuário autenticado e negócio resolvido
+  // 4. Negócio com assinatura/acesso inativo (active === false)
+  if (resolvedBusinessId && !isBusinessActive) {
+    return (
+      <div className="min-h-screen bg-amber-50/60 flex flex-col items-center justify-center p-4 select-none">
+        <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-sm border border-amber-200 text-center">
+          <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3 text-amber-800">
+            <AlertCircle className="w-6 h-6 text-amber-700" />
+          </div>
+          <h2 className="text-lg font-bold text-neutral-900">Acesso Suspenso</h2>
+          <p className="text-sm text-neutral-700 mt-2">
+            Assinatura inativa. Entre em contato com o suporte para reativar.
+          </p>
+
+          <div className="mt-4 p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-xs text-neutral-600 break-all text-left">
+            <div><strong className="text-neutral-800">Negócio:</strong> {businessName}</div>
+            <div className="mt-1"><strong className="text-neutral-800">ID do Negócio:</strong> {resolvedBusinessId}</div>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-2.5">
+            <button
+              type="button"
+              id="btn-retry-inactive-business"
+              onClick={async () => {
+                setIsResolving(true);
+                try {
+                  const activeStatus = await getBusinessActiveStatus(resolvedBusinessId);
+                  setIsBusinessActive(activeStatus);
+                } finally {
+                  setIsResolving(false);
+                }
+              }}
+              className="w-full min-h-[44px] px-3 bg-amber-700 hover:bg-amber-800 active:scale-[0.99] text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Verificar status novamente</span>
+            </button>
+
+            <button
+              type="button"
+              id="btn-inactive-logout"
+              onClick={async () => {
+                await signOut(auth);
+              }}
+              className="w-full min-h-[40px] px-3 border border-neutral-300 text-neutral-700 hover:bg-neutral-50 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
+            >
+              <LogOut className="w-4 h-4 text-neutral-500" />
+              <span>Sair</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 5. Usuário autenticado e negócio resolvido e ativo
   return (
     <BusinessProvider
       businessId={resolvedBusinessId || FALLBACK_BUSINESS_ID}

@@ -151,7 +151,10 @@ export function getSellersCol(businessId = DEFAULT_BUSINESS_ID) {
 }
 
 // Initial Seeding for first-time use
-export async function ensureDefaultBusinessData(businessId = DEFAULT_BUSINESS_ID): Promise<void> {
+export async function ensureDefaultBusinessData(
+  businessId = DEFAULT_BUSINESS_ID,
+  businessName?: string
+): Promise<void> {
   try {
     await ensureAuthSession();
     const bRef = getBusinessRef(businessId);
@@ -161,8 +164,13 @@ export async function ensureDefaultBusinessData(businessId = DEFAULT_BUSINESS_ID
       // Create business doc
       await setDoc(bRef, cleanUndefined({
         id: businessId,
-        name: 'Meu Negócio',
+        name: businessName || 'Meu Negócio',
         createdAt: new Date().toISOString(),
+        active: true,
+      }));
+    } else if (businessName && bSnap.data()?.name !== businessName) {
+      await updateDoc(bRef, cleanUndefined({
+        name: businessName,
       }));
     }
 

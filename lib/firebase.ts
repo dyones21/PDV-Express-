@@ -147,3 +147,24 @@ export async function setUserBusinessMap(
   );
 }
 
+/**
+ * Consulta o documento raiz businesses/{businessId} e retorna se o negócio está ativo (active === true).
+ * Se o campo active não estiver definido, considera ativo por padrão (true).
+ */
+export async function getBusinessActiveStatus(businessId: string): Promise<boolean> {
+  if (!businessId) return false;
+  try {
+    const docRef = doc(db, 'businesses', businessId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return data?.active !== false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Erro ao verificar status active do negócio:', err);
+    return true;
+  }
+}
+
+

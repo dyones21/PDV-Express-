@@ -3,6 +3,7 @@ export interface Business {
   name: string;
   ownerEmail?: string;
   createdAt: string;
+  active?: boolean;
 }
 
 export interface Seller {
