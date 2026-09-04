@@ -1,11 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword 
-} from 'firebase/auth';
-import { auth, setUserBusinessMap, DEFAULT_BUSINESS_ID } from '@/lib/firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 import { ShoppingBag, Lock, Mail, Eye, EyeOff, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 
 interface DeviceLoginScreenProps {
@@ -18,8 +15,6 @@ export function DeviceLoginScreen({ onLoginSuccess }: DeviceLoginScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isRegisterMode, setIsRegisterMode] = useState(false);
-  const [businessNameInput, setBusinessNameInput] = useState('Queijaria Artesanal da Serra');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,21 +34,7 @@ export function DeviceLoginScreen({ onLoginSuccess }: DeviceLoginScreenProps) {
     setIsLoading(true);
 
     try {
-      if (isRegisterMode) {
-        // Create new account
-        const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-        // Link automatically to default business for easy onboarding
-        await setUserBusinessMap(
-          cred.user.uid,
-          DEFAULT_BUSINESS_ID,
-          businessNameInput.trim() || 'Meu Negócio MEI',
-          'owner'
-        );
-      } else {
-        // Standard device sign-in requested
-        await signInWithEmailAndPassword(auth, cleanEmail, password);
-      }
-
+      await signInWithEmailAndPassword(auth, cleanEmail, password);
       if (onLoginSuccess) {
         onLoginSuccess();
       }
@@ -67,12 +48,8 @@ export function DeviceLoginScreen({ onLoginSuccess }: DeviceLoginScreenProps) {
         setErrorMessage('Formato de e-mail inválido. Digite um e-mail válido.');
       } else if (errCode === 'auth/network-request-failed') {
         setErrorMessage('Sem conexão com a internet. O primeiro acesso deste aparelho precisa de conexão.');
-      } else if (errCode === 'auth/email-already-in-use') {
-        setErrorMessage('Este e-mail já está cadastrado. Mude para a aba "Entrar".');
-      } else if (errCode === 'auth/weak-password') {
-        setErrorMessage('A senha é muito fraca. Use no mínimo 6 caracteres.');
       } else {
-        setErrorMessage('Não foi possível entrar. Tente novamente ou verifique os dados.');
+        setErrorMessage('Não foi possível entrar. Verifique seus dados ou fale com o suporte.');
       }
     } finally {
       setIsLoading(false);
@@ -106,12 +83,10 @@ export function DeviceLoginScreen({ onLoginSuccess }: DeviceLoginScreenProps) {
               <span>Acesso do Dispositivo</span>
             </div>
             <h2 className="text-lg font-bold text-neutral-900 mt-1">
-              {isRegisterMode ? 'Cadastrar Conta do Dono' : 'Conectar este Aparelho'}
+              Conectar este Aparelho
             </h2>
             <p className="text-xs text-neutral-500 mt-1">
-              {isRegisterMode
-                ? 'Crie a conta do dono para gerenciar seu negócio e vendedores.'
-                : 'Faça login com a conta do negócio para autorizar este celular.'}
+              Faça login com a conta do proprietário para autorizar este celular.
             </p>
           </div>
 
@@ -124,22 +99,6 @@ export function DeviceLoginScreen({ onLoginSuccess }: DeviceLoginScreenProps) {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {isRegisterMode && (
-              <div>
-                <label className="block text-xs font-bold text-neutral-700 mb-1.5" htmlFor="device-business-name">
-                  Nome do Negócio
-                </label>
-                <input
-                  id="device-business-name"
-                  type="text"
-                  value={businessNameInput}
-                  onChange={(e) => setBusinessNameInput(e.target.value)}
-                  placeholder="Ex: Queijaria Artesanal da Serra"
-                  className="w-full px-3.5 py-3 text-sm rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
-                />
-              </div>
-            )}
-
             {/* Email Field */}
             <div>
               <label className="block text-xs font-bold text-neutral-700 mb-1.5" htmlFor="device-login-email">
@@ -175,11 +134,11 @@ export function DeviceLoginScreen({ onLoginSuccess }: DeviceLoginScreenProps) {
                 <input
                   id="device-login-password"
                   type={showPassword ? 'text' : 'password'}
-                  autoComplete={isRegisterMode ? 'new-password' : 'current-password'}
+                  autoComplete="current-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder="Sua senha"
                   className="w-full pl-10 pr-11 py-3 text-sm rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
                 />
                 <button
@@ -208,29 +167,12 @@ export function DeviceLoginScreen({ onLoginSuccess }: DeviceLoginScreenProps) {
                 </div>
               ) : (
                 <>
-                  <span>{isRegisterMode ? 'Criar Conta e Conectar' : 'Entrar'}</span>
+                  <span>Entrar</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
-
-          {/* Toggle Register / Login */}
-          <div className="mt-5 pt-4 border-t border-neutral-100 text-center">
-            <button
-              type="button"
-              id="btn-toggle-register-mode"
-              onClick={() => {
-                setIsRegisterMode(!isRegisterMode);
-                setErrorMessage(null);
-              }}
-              className="text-xs font-semibold text-amber-800 hover:text-amber-900 underline transition"
-            >
-              {isRegisterMode
-                ? 'Já possui uma conta cadastrada? Clique para Entrar'
-                : 'Primeiro acesso neste aparelho? Clique para Criar Conta'}
-            </button>
-          </div>
         </div>
 
         {/* Footer info */}

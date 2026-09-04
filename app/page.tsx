@@ -30,7 +30,6 @@ import {
   auth, 
   resolveBusinessId, 
   resolveUserBusiness, 
-  setUserBusinessMap, 
   DEFAULT_BUSINESS_ID as FALLBACK_BUSINESS_ID 
 } from '@/lib/firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
@@ -207,7 +206,6 @@ export default function HomePage() {
   const [resolvedBusinessId, setResolvedBusinessId] = useState<string | null | undefined>(undefined);
   const [businessName, setBusinessName] = useState<string>('Queijaria Artesanal da Serra');
   const [isResolving, setIsResolving] = useState<boolean>(false);
-  const [isLinkingDefault, setIsLinkingDefault] = useState<boolean>(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -273,33 +271,6 @@ export default function HomePage() {
           </div>
 
           <div className="mt-5 flex flex-col gap-2.5">
-            {/* Opção para vincular ao negócio existente padrão (facilita onboarding do MEI) */}
-            <button
-              type="button"
-              id="btn-link-default-business"
-              disabled={isLinkingDefault}
-              onClick={async () => {
-                setIsLinkingDefault(true);
-                try {
-                  await setUserBusinessMap(
-                    currentUser.uid,
-                    FALLBACK_BUSINESS_ID,
-                    'Queijaria Artesanal da Serra',
-                    'owner'
-                  );
-                  setResolvedBusinessId(FALLBACK_BUSINESS_ID);
-                  setBusinessName('Queijaria Artesanal da Serra');
-                } catch (err) {
-                  console.warn('Erro ao vincular negócio padrão:', err);
-                } finally {
-                  setIsLinkingDefault(false);
-                }
-              }}
-              className="w-full py-2.5 px-3 bg-amber-700 hover:bg-amber-800 active:scale-[0.99] text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-2"
-            >
-              {isLinkingDefault ? 'Vinculando...' : 'Vincular a Queijaria Artesanal da Serra'}
-            </button>
-
             <button
               type="button"
               id="btn-retry-resolve-business"
@@ -316,9 +287,9 @@ export default function HomePage() {
                   setIsResolving(false);
                 }
               }}
-              className="w-full py-2.5 px-3 border border-neutral-300 hover:bg-neutral-50 text-neutral-700 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
+              className="w-full min-h-[44px] px-3 bg-amber-700 hover:bg-amber-800 active:scale-[0.99] text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm"
             >
-              <RefreshCw className="w-3.5 h-3.5" />
+              <RefreshCw className="w-4 h-4" />
               <span>Verificar novamente</span>
             </button>
 
@@ -328,10 +299,10 @@ export default function HomePage() {
               onClick={async () => {
                 await signOut(auth);
               }}
-              className="w-full py-2 px-3 text-red-600 hover:bg-red-50 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
+              className="w-full min-h-[40px] px-3 border border-neutral-300 text-neutral-700 hover:bg-neutral-50 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
             >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Sair da conta</span>
+              <LogOut className="w-4 h-4 text-neutral-500" />
+              <span>Sair</span>
             </button>
           </div>
         </div>
