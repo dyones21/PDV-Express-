@@ -1,12 +1,12 @@
 {
-  "projectId": "gen-lang-client-0540125949",
-  "appId": "1:573191501804:web:4761661ea1c3fe5b1432c9",
-  "apiKey": "AIzaSyDiRMrXydHjiD_j3T4pq5l7jLOIA0l3bGo",
-  "authDomain": "gen-lang-client-0540125949.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-controledevendas-2e004577-c4f3-4b93-a90d-4edcfd2f6dd5",
-  "storageBucket": "gen-lang-client-0540125949.firebasestorage.app",
-  "messagingSenderId": "573191501804",
+  "projectId": "pdvexpress-c286f",
+  "appId": "1:620221913117:web:69b76ad504e2359b6c8ef4",
+  "apiKey": "AIzaSyB2c_2lz1RL4XZwonD1mZ8u_K_n3GuZBKM",
+  "authDomain": "pdvexpress-c286f.firebaseapp.com",
+  "firestoreDatabaseId": "",
+  "storageBucket": "pdvexpress-c286f.firebasestorage.app",
+  "messagingSenderId": "620221913117",
   "measurementId": "",
-  "oAuthClientId": "573191501804-vvn5rhp1cdq265n5kshpbil35e0066e9.apps.googleusercontent.com",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }

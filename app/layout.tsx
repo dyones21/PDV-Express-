@@ -40,6 +40,43 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                if (typeof window !== 'undefined') {
+                  if (typeof Element !== 'undefined' && Element.prototype.releasePointerCapture) {
+                    var originalRelease = Element.prototype.releasePointerCapture;
+                    Element.prototype.releasePointerCapture = function(pointerId) {
+                      try {
+                        if (typeof this.hasPointerCapture === 'function' && !this.hasPointerCapture(pointerId)) {
+                          return;
+                        }
+                        originalRelease.call(this, pointerId);
+                      } catch (err) {
+                        if (err && (err.name === 'NotFoundError' || (err.message && err.message.indexOf('releasePointerCapture') !== -1))) {
+                          return;
+                        }
+                        throw err;
+                      }
+                    };
+                  }
+                  window.addEventListener('error', function(event) {
+                    if (event && (
+                      (event.message && event.message.indexOf('releasePointerCapture') !== -1) ||
+                      (event.error && (event.error.name === 'NotFoundError' || (event.error.message && event.error.message.indexOf('releasePointerCapture') !== -1)))
+                    )) {
+                      event.preventDefault();
+                      if (event.stopImmediatePropagation) {
+                        event.stopImmediatePropagation();
+                      }
+                    }
+                  }, true);
+                }
+              })();
+            `,
+          }}
+        />
       </head>
       <body className="h-full antialiased font-sans text-neutral-900 bg-amber-50/40 select-none touch-manipulation" suppressHydrationWarning>
         {children}

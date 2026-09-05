@@ -86,16 +86,28 @@ export function BusinessSignUpScreen({
         onSignUpSuccess();
       }
     } catch (err: unknown) {
-      console.error('Erro ao cadastrar novo negócio:', err);
-      const errCode = (err as { code?: string })?.code || '';
+      const errorObj = err as { code?: string; message?: string };
+      const errCode = errorObj?.code || '';
+      const errMsg = errorObj?.message || '';
 
-      if (errCode === 'auth/email-already-in-use') {
-        setErrorMessage('Este e-mail já está cadastrado. Faça login ou use outro e-mail.');
-      } else if (errCode === 'auth/weak-password') {
+      const isEmailInUse = errCode === 'auth/email-already-in-use' || errMsg.includes('auth/email-already-in-use');
+      const isWeakPass = errCode === 'auth/weak-password' || errMsg.includes('auth/weak-password');
+      const isInvalidEmail = errCode === 'auth/invalid-email' || errMsg.includes('auth/invalid-email');
+      const isNetworkError = errCode === 'auth/network-request-failed' || errMsg.includes('auth/network-request-failed');
+
+      if (isEmailInUse || isWeakPass || isInvalidEmail || isNetworkError) {
+        console.warn('Aviso no cadastro de novo negócio:', errCode || errMsg);
+      } else {
+        console.error('Erro inesperado ao cadastrar novo negócio:', err);
+      }
+
+      if (isEmailInUse) {
+        setErrorMessage('Este e-mail já está cadastrado. Se você já tem uma conta, faça login diretamente.');
+      } else if (isWeakPass) {
         setErrorMessage('A senha é muito fraca. Digite no mínimo 6 caracteres.');
-      } else if (errCode === 'auth/invalid-email') {
+      } else if (isInvalidEmail) {
         setErrorMessage('Formato de e-mail inválido. Verifique o endereço digitado.');
-      } else if (errCode === 'auth/network-request-failed') {
+      } else if (isNetworkError) {
         setErrorMessage('Sem conexão com a internet. Verifique sua rede e tente novamente.');
       } else {
         setErrorMessage('Não foi possível concluir o cadastro. Verifique os dados e tente novamente.');
@@ -143,7 +155,19 @@ export function BusinessSignUpScreen({
           {errorMessage && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2.5 text-xs text-red-700">
               <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-              <div className="leading-snug">{errorMessage}</div>
+              <div className="leading-snug flex-1">
+                <p>{errorMessage}</p>
+                {errorMessage.includes('já está cadastrado') && onNavigateToLogin && (
+                  <button
+                    type="button"
+                    onClick={onNavigateToLogin}
+                    className="mt-2 inline-flex items-center gap-1.5 font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2.5 py-1 rounded-lg transition"
+                  >
+                    <span>Fazer login com este e-mail</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
           )}
 

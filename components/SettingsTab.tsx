@@ -7,6 +7,8 @@ import { useNetworkSync } from '@/hooks/use-network-sync';
 import { exportSalesCsv, exportDebtorsCsv } from '@/lib/export-csv';
 import { updateSeller } from '@/lib/db';
 import { ConfirmDialog } from './ConfirmDialog';
+import { signOut } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 import { 
   Settings, 
   Users, 
@@ -25,7 +27,8 @@ import {
   Power,
   X,
   KeyRound,
-  ShieldAlert
+  ShieldAlert,
+  LogOut
 } from 'lucide-react';
 import { SellerSwitchModal } from './SellerSwitchModal';
 
@@ -52,6 +55,20 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
   const [sellerFormError, setSellerFormError] = useState('');
   const [isSubmittingSeller, setIsSubmittingSeller] = useState(false);
   const [sellerToToggle, setSellerToToggle] = useState<{ seller: Seller; nextActive: boolean } | null>(null);
+  const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  const handleConfirmSignOut = async () => {
+    try {
+      setIsSigningOut(true);
+      await signOut(auth);
+    } catch (err: any) {
+      console.error('Erro ao desconectar:', err);
+      alert('Erro ao desconectar dispositivo: ' + (err?.message || 'Tente novamente.'));
+      setIsSigningOut(false);
+      setIsSignOutDialogOpen(false);
+    }
+  };
 
   const handleExportSales = () => {
     exportSalesCsv(sales, exportStartDate || undefined, exportEndDate || undefined);
@@ -411,6 +428,29 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
         </div>
       </div>
 
+      {/* Sair do Sistema (Logout Completo do Dispositivo) */}
+      <div className="bg-white rounded-2xl p-4 border border-neutral-200/80 shadow-sm space-y-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <LogOut className="w-4 h-4 text-neutral-500" />
+            <h3 className="text-sm font-bold text-neutral-900">Sair do Sistema</h3>
+          </div>
+          <p className="text-xs text-neutral-500 mt-1">
+            Desconecta este celular do sistema. Para voltar a usar, será necessário entrar com e-mail e senha.
+          </p>
+        </div>
+
+        <button
+          id="btn-sign-out-device"
+          type="button"
+          onClick={() => setIsSignOutDialogOpen(true)}
+          className="w-full py-2.5 px-4 rounded-xl border border-neutral-300 hover:border-neutral-400 bg-neutral-50 hover:bg-neutral-100 text-neutral-700 hover:text-neutral-900 font-bold text-xs transition active:scale-98 flex items-center justify-center gap-2"
+        >
+          <LogOut className="w-4 h-4 text-neutral-500" />
+          <span>Sair do Sistema</span>
+        </button>
+      </div>
+
       {isSwitchModalOpen && (
         <SellerSwitchModal onClose={() => setIsSwitchModalOpen(false)} />
       )}
@@ -551,6 +591,22 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
         variant={sellerToToggle?.nextActive ? 'primary' : 'warning'}
         onConfirm={handleConfirmToggleSeller}
         onCancel={() => setSellerToToggle(null)}
+      />
+
+      {/* Modal de Confirmação: Sair do Sistema (Logout Completo do Dispositivo) */}
+      <ConfirmDialog
+        isOpen={isSignOutDialogOpen}
+        title="Sair do Sistema"
+        message="Isso vai desconectar este dispositivo. Será necessário fazer login novamente com e-mail e senha para voltar a usar o sistema. Deseja continuar?"
+        confirmLabel={isSigningOut ? 'Saindo...' : 'Sair do Sistema'}
+        cancelLabel="Cancelar"
+        variant="danger"
+        onConfirm={handleConfirmSignOut}
+        onCancel={() => {
+          if (!isSigningOut) {
+            setIsSignOutDialogOpen(false);
+          }
+        }}
       />
     </div>
   );
