@@ -3,7 +3,7 @@
   "appId": "1:620221913117:web:69b76ad504e2359b6c8ef4",
   "apiKey": "AIzaSyB2c_2lz1RL4XZwonD1mZ8u_K_n3GuZBKM",
   "authDomain": "pdvexpress-c286f.firebaseapp.com",
-  "firestoreDatabaseId": "",
+  "firestoreDatabaseId": "(default)",
   "storageBucket": "pdvexpress-c286f.firebasestorage.app",
   "messagingSenderId": "620221913117",
   "measurementId": "",

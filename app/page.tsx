@@ -28,13 +28,16 @@ import { BusinessSignUpScreen } from '@/components/BusinessSignUpScreen';
 import { BusinessProvider, useBusiness } from '@/context/BusinessContext';
 import { 
   auth, 
+  db,
   resolveBusinessId, 
   resolveUserBusiness, 
   getBusinessActiveStatus,
   DEFAULT_BUSINESS_ID as FALLBACK_BUSINESS_ID 
 } from '@/lib/firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
-import { AlertCircle, RefreshCw, LogOut } from 'lucide-react';
+import { doc, collection, writeBatch } from 'firebase/firestore';
+import { generateSalt, hashPin } from '@/lib/security';
+import { AlertCircle, RefreshCw, LogOut, Building2 } from 'lucide-react';
 
 function MainAppContent() {
   const { businessId } = useBusiness();
@@ -208,9 +211,10 @@ function MainAppContent() {
 export default function HomePage() {
   const [currentUser, setCurrentUser] = useState<User | null | undefined>(() => auth.currentUser ?? undefined);
   const [resolvedBusinessId, setResolvedBusinessId] = useState<string | null | undefined>(undefined);
-  const [businessName, setBusinessName] = useState<string>('Queijaria Artesanal da Serra');
+  const [businessName, setBusinessName] = useState<string>('Meu Negócio');
   const [isBusinessActive, setIsBusinessActive] = useState<boolean>(true);
   const [isResolving, setIsResolving] = useState<boolean>(false);
+  const [isAutoLinking, setIsAutoLinking] = useState<boolean>(false);
   const [authView, setAuthView] = useState<'login' | 'signup'>('login');
 
   useEffect(() => {
@@ -230,12 +234,21 @@ export default function HomePage() {
       if (user) {
         setIsResolving(true);
         try {
-          const bId = await resolveBusinessId(user.uid);
+          let bId = await resolveBusinessId(user.uid);
+          // Se o usuário acabou de se cadastrar, aguarda breves instantes para a gravação sincronizar
+          if (!bId) {
+            for (let i = 0; i < 4; i++) {
+              await new Promise((resolve) => setTimeout(resolve, 600));
+              bId = await resolveBusinessId(user.uid);
+              if (bId) break;
+            }
+          }
+
           if (bId) {
             const bInfo = await resolveUserBusiness(user.uid);
             const activeStatus = await getBusinessActiveStatus(bId);
             setIsBusinessActive(activeStatus);
-            setBusinessName(bInfo?.businessName || 'Queijaria Artesanal da Serra');
+            setBusinessName(bInfo?.businessName || 'Meu Negócio');
             setResolvedBusinessId(bId);
           } else {
             setResolvedBusinessId(null);
@@ -275,6 +288,9 @@ export default function HomePage() {
       return (
         <BusinessSignUpScreen
           onNavigateToLogin={() => setAuthView('login')}
+          onSignUpSuccess={() => {
+            setIsResolving(true);
+          }}
         />
       );
     }
@@ -295,7 +311,7 @@ export default function HomePage() {
           </div>
           <h2 className="text-lg font-bold text-neutral-900">Acesso Não Vinculado</h2>
           <p className="text-sm text-neutral-700 mt-2">
-            Sua conta não está vinculada a nenhum negócio. Fale com o suporte.
+            Sua conta de e-mail ainda não possui uma empresa associada no sistema.
           </p>
 
           <div className="mt-4 p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-xs text-neutral-600 break-all text-left">
@@ -304,6 +320,61 @@ export default function HomePage() {
           </div>
 
           <div className="mt-5 flex flex-col gap-2.5">
+            <button
+              type="button"
+              id="btn-auto-initialize-business"
+              disabled={isAutoLinking}
+              onClick={async () => {
+                setIsAutoLinking(true);
+                try {
+                  const newBId = doc(collection(db, 'businesses')).id;
+                  const cleanEmail = currentUser.email || 'empresa@pdv.com';
+                  const baseName = cleanEmail.split('@')[0] || 'Meu Negócio';
+                  const cleanName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+                  const salt = generateSalt();
+                  const hash = await hashPin('1234', salt);
+                  const sellerRef = doc(collection(db, 'businesses', newBId, 'sellers'));
+
+                  const batch = writeBatch(db);
+                  batch.set(doc(db, 'userBusinessMap', currentUser.uid), {
+                    businessId: newBId,
+                    businessName: cleanName,
+                    role: 'owner',
+                    updatedAt: new Date().toISOString(),
+                  });
+                  batch.set(doc(db, 'businesses', newBId), {
+                    id: newBId,
+                    name: cleanName,
+                    ownerEmail: cleanEmail,
+                    ownerUid: currentUser.uid,
+                    createdAt: new Date().toISOString(),
+                    active: true,
+                  });
+                  batch.set(sellerRef, {
+                    name: cleanName,
+                    role: 'owner',
+                    pinHash: hash,
+                    pinSalt: salt,
+                    active: true,
+                    createdAt: new Date().toISOString(),
+                  });
+                  await batch.commit();
+
+                  setBusinessName(cleanName);
+                  setIsBusinessActive(true);
+                  setResolvedBusinessId(newBId);
+                } catch (err) {
+                  console.error('Erro ao auto-vincular empresa:', err);
+                } finally {
+                  setIsAutoLinking(false);
+                }
+              }}
+              className="w-full min-h-[44px] px-3 bg-amber-600 hover:bg-amber-700 active:scale-[0.99] text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-60"
+            >
+              <Building2 className="w-4 h-4" />
+              <span>{isAutoLinking ? 'Criando negócio...' : 'Criar e Ativar Meu Negócio Agora'}</span>
+            </button>
+
             <button
               type="button"
               id="btn-retry-resolve-business"
@@ -315,14 +386,14 @@ export default function HomePage() {
                     const bInfo = await resolveUserBusiness(currentUser.uid);
                     const activeStatus = await getBusinessActiveStatus(bId);
                     setIsBusinessActive(activeStatus);
-                    setBusinessName(bInfo?.businessName || 'Queijaria Artesanal da Serra');
+                    setBusinessName(bInfo?.businessName || 'Meu Negócio');
                     setResolvedBusinessId(bId);
                   }
                 } finally {
                   setIsResolving(false);
                 }
               }}
-              className="w-full min-h-[44px] px-3 bg-amber-700 hover:bg-amber-800 active:scale-[0.99] text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm"
+              className="w-full min-h-[44px] px-3 border border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100 active:scale-[0.99] font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
             >
               <RefreshCw className="w-4 h-4" />
               <span>Verificar novamente</span>
@@ -337,7 +408,7 @@ export default function HomePage() {
               className="w-full min-h-[40px] px-3 border border-neutral-300 text-neutral-700 hover:bg-neutral-50 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
             >
               <LogOut className="w-4 h-4 text-neutral-500" />
-              <span>Sair</span>
+              <span>Sair desta conta</span>
             </button>
           </div>
         </div>

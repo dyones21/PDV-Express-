@@ -6,28 +6,34 @@ import {
   persistentMultipleTabManager,
   doc,
   getDoc,
-  setDoc
+  setDoc,
+  updateDoc,
+  query,
+  collection,
+  where,
+  getDocs
 } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import configJson from '../firebase-applet-config.json';
 
+export const TARGET_PROJECT_ID = 'pdvexpress-c286f';
+export const TARGET_DATABASE_ID = '(default)';
+
 const firebaseConfig = {
   apiKey: configJson.apiKey,
-  authDomain: configJson.authDomain,
-  projectId: configJson.projectId,
-  storageBucket: configJson.storageBucket,
+  authDomain: configJson.authDomain || 'pdvexpress-c286f.firebaseapp.com',
+  projectId: TARGET_PROJECT_ID,
+  storageBucket: configJson.storageBucket || 'pdvexpress-c286f.firebasestorage.app',
   messagingSenderId: configJson.messagingSenderId,
   appId: configJson.appId,
 };
 
-// Initialize Firebase App
+// Initialize Firebase App exclusivamente com o projeto default pdvexpress-c286f
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-const targetDbId = configJson.firestoreDatabaseId && configJson.firestoreDatabaseId !== '(default)' 
-  ? configJson.firestoreDatabaseId 
-  : undefined;
+export const ACTIVE_DATABASE_ID = TARGET_DATABASE_ID;
 
-// Initialize Firestore with robust multi-tab offline persistence and fallback
+// Inicializa o Firestore exclusivamente usando o banco (default) do projeto pdvexpress-c286f
 let firestoreDb: ReturnType<typeof getFirestore>;
 
 try {
@@ -38,21 +44,16 @@ try {
         tabManager: persistentMultipleTabManager(),
       }),
     };
-    firestoreDb = targetDbId
-      ? initializeFirestore(app, settings, targetDbId)
-      : initializeFirestore(app, settings);
+    firestoreDb = initializeFirestore(app, settings, TARGET_DATABASE_ID);
   } else {
     const settings = { ignoreUndefinedProperties: true };
-    firestoreDb = targetDbId
-      ? initializeFirestore(app, settings, targetDbId)
-      : initializeFirestore(app, settings);
+    firestoreDb = initializeFirestore(app, settings, TARGET_DATABASE_ID);
   }
 } catch {
-  // If already initialized or if persistentLocalCache is not permitted in current context (e.g. iframe)
   try {
-    firestoreDb = targetDbId ? getFirestore(app, targetDbId) : getFirestore(app);
+    firestoreDb = getFirestore(app, TARGET_DATABASE_ID);
   } catch {
-    firestoreDb = getFirestore(app);
+    firestoreDb = getFirestore(app, TARGET_DATABASE_ID);
   }
 }
 
@@ -91,6 +92,7 @@ export async function ensureAuthSession(): Promise<User | null> {
 /**
  * Busca na coleção raiz 'userBusinessMap/{uid}' o ID do negócio vinculado ao usuário.
  * Retorna o businessId (string) ou null se não houver documento cadastrado.
+ * Possui fallback inteligente por ownerUid na coleção 'businesses' caso o mapeamento ainda não tenha sincronizado.
  */
 export async function resolveBusinessId(uid: string): Promise<string | null> {
   if (!uid) return null;
@@ -99,8 +101,31 @@ export async function resolveBusinessId(uid: string): Promise<string | null> {
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const data = docSnap.data();
-      return typeof data?.businessId === 'string' && data.businessId ? data.businessId : null;
+      if (typeof data?.businessId === 'string' && data.businessId) {
+        return data.businessId;
+      }
     }
+
+    // Fallback: verificar se já existe negócio criado com ownerUid == uid
+    const q = query(collection(db, 'businesses'), where('ownerUid', '==', uid));
+    const querySnap = await getDocs(q);
+    if (!querySnap.empty) {
+      const bDoc = querySnap.docs[0];
+      const foundBId = bDoc.id;
+      // Auto-repara o mapeamento no userBusinessMap para acessos futuros rápidos
+      try {
+        await setDoc(docRef, {
+          businessId: foundBId,
+          businessName: bDoc.data()?.name || 'Meu Negócio',
+          role: 'owner',
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.warn('Auto-reparo do userBusinessMap não pôde ser gravado:', e);
+      }
+      return foundBId;
+    }
+
     return null;
   } catch (err) {
     console.warn('Erro ao resolver businessId do usuário:', err);
@@ -126,10 +151,23 @@ export async function resolveUserBusiness(uid: string): Promise<UserBusinessMapp
       const data = docSnap.data();
       return {
         businessId: typeof data?.businessId === 'string' && data.businessId ? data.businessId : DEFAULT_BUSINESS_ID,
-        businessName: typeof data?.businessName === 'string' && data.businessName ? data.businessName : 'Queijaria Artesanal',
+        businessName: typeof data?.businessName === 'string' && data.businessName ? data.businessName : 'Meu Negócio',
         role: data?.role === 'seller' ? 'seller' : 'owner',
       };
     }
+
+    // Fallback por businesses
+    const q = query(collection(db, 'businesses'), where('ownerUid', '==', uid));
+    const querySnap = await getDocs(q);
+    if (!querySnap.empty) {
+      const bDoc = querySnap.docs[0];
+      return {
+        businessId: bDoc.id,
+        businessName: bDoc.data()?.name || 'Meu Negócio',
+        role: 'owner',
+      };
+    }
+
     return null;
   } catch (err) {
     console.warn('Erro ao carregar dados do negócio:', err);
@@ -161,15 +199,22 @@ export async function setUserBusinessMap(
 
 /**
  * Consulta o documento raiz businesses/{businessId} e retorna se o negócio está ativo (active === true).
- * Se o campo active não estiver definido, considera ativo por padrão (true).
+ * Se o campo active não estiver definido ou for conta do próprio dono, considera ativo.
  */
 export async function getBusinessActiveStatus(businessId: string): Promise<boolean> {
-  if (!businessId) return false;
+  if (!businessId) return true;
   try {
     const docRef = doc(db, 'businesses', businessId);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const data = docSnap.data();
+      // Se for o dono do negócio e estiver active: false, ativa automaticamente
+      if (data?.active === false && data?.ownerUid === auth.currentUser?.uid) {
+        try {
+          await updateDoc(docRef, { active: true });
+          return true;
+        } catch {}
+      }
       return data?.active !== false;
     }
     return true;

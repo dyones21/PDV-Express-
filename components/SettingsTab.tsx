@@ -30,7 +30,9 @@ import {
   KeyRound,
   ShieldAlert,
   LogOut,
-  Trash2
+  Trash2,
+  Database,
+  RefreshCw
 } from 'lucide-react';
 import { SellerSwitchModal } from './SellerSwitchModal';
 
@@ -454,6 +456,39 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
               <span>Instalar Aplicativo no Smartphone</span>
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Banco de Dados: pdvexpress-c286f (default) */}
+      <div className="bg-white rounded-2xl p-4 border border-neutral-200/80 shadow-sm space-y-3">
+        <div className="flex items-center gap-2">
+          <Database className="w-4 h-4 text-amber-700" />
+          <h3 className="text-sm font-bold text-neutral-900">Banco de Dados Oficial</h3>
+        </div>
+
+        <p className="text-xs text-neutral-600 leading-relaxed">
+          O aplicativo opera unicamente com o banco de dados oficial do projeto <strong className="text-neutral-900 font-bold">pdvexpress-c286f</strong> na instância <strong className="text-neutral-900 font-bold">(default)</strong>, garantindo total integridade e sincronização em desenvolvimento e produção.
+        </p>
+
+        <div className="p-3 bg-neutral-50 rounded-xl space-y-2 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-neutral-600 font-medium">Projeto Firebase:</span>
+            <span className="font-bold text-neutral-900 font-mono text-[11px]">
+              pdvexpress-c286f
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-neutral-600 font-medium">Instância Firestore:</span>
+            <span className="font-bold text-emerald-700 font-mono bg-emerald-100/70 px-2 py-0.5 rounded">
+              (default)
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-neutral-600 font-medium">Modo de Operação:</span>
+            <span className="font-semibold text-neutral-700">
+              Offline-First (Sincronizado)
+            </span>
+          </div>
         </div>
       </div>
 

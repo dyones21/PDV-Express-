@@ -2,9 +2,9 @@
 
 import React, { useState } from 'react';
 import { createUserWithEmailAndPassword, User as FirebaseUser } from 'firebase/auth';
-import { collection, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import { provisionNewBusiness } from '@/lib/db';
+import { hashPin, generateSalt } from '@/lib/security';
 import { ShoppingBag, Lock, Mail, Building2, Eye, EyeOff, AlertCircle, ArrowRight, Sparkles, User, KeyRound } from 'lucide-react';
 
 interface BusinessSignUpScreenProps {
@@ -81,33 +81,45 @@ export function BusinessSignUpScreen({
       // 2. Gera um novo businessId único do Firestore
       newBusinessId = doc(collection(db, 'businesses')).id;
 
-      // 3. Cria documento userBusinessMap/{uid}
-      await setDoc(doc(db, 'userBusinessMap', uid), {
+      // 3. Prepara o vendedor inicial (dono) com PIN criptografado com sal
+      const cleanPin = cleanOwnerPin.trim();
+      const salt = generateSalt();
+      const hash = await hashPin(cleanPin, salt);
+      const sellerRef = doc(collection(db, 'businesses', newBusinessId, 'sellers'));
+
+      // 4. Grava tudo em batch atômico no Firestore (garante que tudo é criado junto sem inconsistência ou atraso)
+      const batch = writeBatch(db);
+
+      // 4.1 userBusinessMap/{uid}
+      batch.set(doc(db, 'userBusinessMap', uid), {
         businessId: newBusinessId,
         businessName: cleanBusinessName,
         role: 'owner',
         updatedAt: new Date().toISOString(),
       });
 
-      // 4. Cria documento businesses/{newBusinessId} com ownerEmail e ownerUid
-      await setDoc(doc(db, 'businesses', newBusinessId), {
+      // 4.2 businesses/{newBusinessId} - ATIVO por padrão para o usuário usar imediatamente
+      batch.set(doc(db, 'businesses', newBusinessId), {
         id: newBusinessId,
         name: cleanBusinessName,
         ownerEmail: normalizedEmail,
         ownerUid: uid,
         createdAt: new Date().toISOString(),
-        active: false,
+        active: true,
       });
 
-      // 5. Inicializa novo negócio sem dados de exemplo (cria apenas o vendedor dono com o PIN informado)
-      await provisionNewBusiness(
-        newBusinessId,
-        cleanBusinessName,
-        cleanOwnerName,
-        cleanOwnerPin,
-        normalizedEmail,
-        uid
-      );
+      // 4.3 Vendedor inicial (dono)
+      batch.set(sellerRef, {
+        name: cleanOwnerName.trim(),
+        role: 'owner',
+        pinHash: hash,
+        pinSalt: salt,
+        active: true,
+        createdAt: new Date().toISOString(),
+      });
+
+      // Efetiva a gravação no Firestore
+      await batch.commit();
 
       if (onSignUpSuccess) {
         onSignUpSuccess();

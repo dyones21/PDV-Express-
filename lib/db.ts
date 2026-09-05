@@ -316,7 +316,7 @@ export async function provisionNewBusiness(
       id: businessId,
       name: businessName,
       createdAt: new Date().toISOString(),
-      active: false,
+      active: true,
       ownerEmail: ownerEmail || undefined,
       ownerUid: ownerUid || undefined,
     }));
