@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
 import { useNetworkSync } from '@/hooks/use-network-sync';
-import { Wifi, WifiOff, RefreshCw, UserCheck, Download, ShoppingBag, ShieldCheck } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw, UserCheck, Download, ShoppingBag, HelpCircle } from 'lucide-react';
 import { SellerSwitchModal } from './SellerSwitchModal';
 
 interface HeaderProps {
@@ -84,6 +85,17 @@ export function Header({ hasPendingWrites }: HeaderProps) {
                 </>
               )}
             </div>
+
+            {/* Help / Ajuda */}
+            <Link
+              href="/ajuda"
+              id="btn-help-header"
+              className="flex items-center justify-center p-1.5 rounded-lg bg-amber-900/50 hover:bg-amber-900/80 border border-amber-500/30 text-amber-200 hover:text-white transition active:scale-95"
+              title="Central de Ajuda"
+              aria-label="Central de Ajuda"
+            >
+              <HelpCircle className="w-4 h-4" />
+            </Link>
 
             {/* Current Seller Button */}
             <button
