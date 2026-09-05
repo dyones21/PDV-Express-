@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, User as FirebaseUser } from 'firebase/auth';
 import { collection, doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import { ensureDefaultBusinessData } from '@/lib/db';
-import { ShoppingBag, Lock, Mail, Building2, Eye, EyeOff, AlertCircle, ArrowRight, Sparkles } from 'lucide-react';
+import { provisionNewBusiness } from '@/lib/db';
+import { ShoppingBag, Lock, Mail, Building2, Eye, EyeOff, AlertCircle, ArrowRight, Sparkles, User, KeyRound } from 'lucide-react';
 
 interface BusinessSignUpScreenProps {
   onNavigateToLogin?: () => void;
@@ -17,6 +17,9 @@ export function BusinessSignUpScreen({
   onSignUpSuccess,
 }: BusinessSignUpScreenProps) {
   const [businessName, setBusinessName] = useState('');
+  const [ownerName, setOwnerName] = useState('');
+  const [ownerPin, setOwnerPin] = useState('');
+  const [showPin, setShowPin] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -35,10 +38,18 @@ export function BusinessSignUpScreen({
     }
 
     const cleanBusinessName = businessName.trim();
+    const cleanOwnerName = ownerName.trim();
+    const cleanOwnerPin = ownerPin.trim();
     const cleanEmail = email.trim();
+    const normalizedEmail = cleanEmail.toLowerCase();
 
     if (!cleanBusinessName) {
       setErrorMessage('Por favor, informe o nome do seu negócio.');
+      return;
+    }
+
+    if (!cleanOwnerName) {
+      setErrorMessage('Por favor, informe o seu nome.');
       return;
     }
 
@@ -52,11 +63,18 @@ export function BusinessSignUpScreen({
       return;
     }
 
+    if (!cleanOwnerPin || !/^\d{4}$/.test(cleanOwnerPin)) {
+      setErrorMessage('Seu PIN de acesso deve ter exatamente 4 dígitos numéricos.');
+      return;
+    }
+
     setIsLoading(true);
+    let createdUser: FirebaseUser | null = null;
 
     try {
       // 1. Cria o usuário no Firebase Auth
-      const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+      const cred = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+      createdUser = cred.user;
       const uid = cred.user.uid;
 
       // 2. Gera um novo businessId único do Firestore
@@ -74,18 +92,34 @@ export function BusinessSignUpScreen({
       await setDoc(doc(db, 'businesses', newBusinessId), {
         id: newBusinessId,
         name: cleanBusinessName,
-        ownerEmail: cleanEmail,
+        ownerEmail: normalizedEmail,
         createdAt: new Date().toISOString(),
         active: false,
       });
 
-      // 5. Inicializa dados padrão do negócio (vendedor principal PIN 1234, produtos exemplo)
-      await ensureDefaultBusinessData(newBusinessId, cleanBusinessName);
+      // 5. Inicializa novo negócio sem dados de exemplo (cria apenas o vendedor dono com o PIN informado)
+      await provisionNewBusiness(
+        newBusinessId,
+        cleanBusinessName,
+        cleanOwnerName,
+        cleanOwnerPin,
+        normalizedEmail
+      );
 
       if (onSignUpSuccess) {
         onSignUpSuccess();
       }
     } catch (err: unknown) {
+      // Se a gravação no Firestore falhar após criar o usuário no Auth, fazemos rollback
+      // para evitar que o e-mail fique travado como "já em uso" em tentativas seguintes.
+      if (createdUser) {
+        try {
+          await createdUser.delete();
+        } catch {
+          // Ignora caso o Auth não permita exclusão imediata
+        }
+      }
+
       const errorObj = err as { code?: string; message?: string };
       const errCode = errorObj?.code || '';
       const errMsg = errorObj?.message || '';
@@ -94,14 +128,22 @@ export function BusinessSignUpScreen({
       const isWeakPass = errCode === 'auth/weak-password' || errMsg.includes('auth/weak-password');
       const isInvalidEmail = errCode === 'auth/invalid-email' || errMsg.includes('auth/invalid-email');
       const isNetworkError = errCode === 'auth/network-request-failed' || errMsg.includes('auth/network-request-failed');
+      const isPermissionDenied =
+        errCode === 'permission-denied' ||
+        errMsg.toLowerCase().includes('permission') ||
+        errMsg.toLowerCase().includes('insufficient permissions');
 
-      if (isEmailInUse || isWeakPass || isInvalidEmail || isNetworkError) {
+      if (isEmailInUse || isWeakPass || isInvalidEmail || isNetworkError || isPermissionDenied) {
         console.warn('Aviso no cadastro de novo negócio:', errCode || errMsg);
       } else {
         console.error('Erro inesperado ao cadastrar novo negócio:', err);
       }
 
-      if (isEmailInUse) {
+      if (isPermissionDenied) {
+        setErrorMessage(
+          'Permissão negada no Firestore. É necessário publicar as Regras de Segurança (Rules) no Firebase Console do projeto pdvexpress-c286f para autorizar a gravação dos dados.'
+        );
+      } else if (isEmailInUse) {
         setErrorMessage('Este e-mail já está cadastrado. Se você já tem uma conta, faça login diretamente.');
       } else if (isWeakPass) {
         setErrorMessage('A senha é muito fraca. Digite no mínimo 6 caracteres.');
@@ -206,6 +248,27 @@ export function BusinessSignUpScreen({
               </div>
             </div>
 
+            {/* Owner Name Field */}
+            <div>
+              <label className="block text-xs font-bold text-neutral-700 mb-1.5" htmlFor="signup-owner-name">
+                Seu Nome
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-400">
+                  <User className="w-4 h-4" />
+                </div>
+                <input
+                  id="signup-owner-name"
+                  type="text"
+                  required
+                  value={ownerName}
+                  onChange={(e) => setOwnerName(e.target.value)}
+                  placeholder="Ex: Carlos Oliveira"
+                  className="w-full pl-10 pr-3.5 py-3 text-sm rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
+                />
+              </div>
+            </div>
+
             {/* Email Field */}
             <div>
               <label className="block text-xs font-bold text-neutral-700 mb-1.5" htmlFor="signup-email">
@@ -245,7 +308,7 @@ export function BusinessSignUpScreen({
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Crie uma senha segura"
+                  placeholder="Crie uma senha de acesso ao app"
                   className="w-full pl-10 pr-11 py-3 text-sm rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
                 />
                 <button
@@ -256,6 +319,42 @@ export function BusinessSignUpScreen({
                   title={showPassword ? 'Ocultar senha' : 'Exibir senha'}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Owner PIN Field */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold text-neutral-700" htmlFor="signup-owner-pin">
+                  Seu PIN de Acesso (4 dígitos)
+                </label>
+                <span className="text-[11px] text-neutral-500">Usado no dia a dia no PDV</span>
+              </div>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-400">
+                  <KeyRound className="w-4 h-4" />
+                </div>
+                <input
+                  id="signup-owner-pin"
+                  type={showPin ? 'text' : 'password'}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={4}
+                  required
+                  value={ownerPin}
+                  onChange={(e) => setOwnerPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="Ex: 1234"
+                  className="w-full pl-10 pr-11 py-3 text-sm tracking-widest font-mono rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
+                />
+                <button
+                  type="button"
+                  id="btn-toggle-signup-pin"
+                  onClick={() => setShowPin(!showPin)}
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-neutral-400 hover:text-neutral-600 transition"
+                  title={showPin ? 'Ocultar PIN' : 'Exibir PIN'}
+                >
+                  {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
@@ -296,9 +395,9 @@ export function BusinessSignUpScreen({
 
         {/* Footer info */}
         <div className="text-center mt-6 text-xs text-neutral-500">
-          <p>Seu negócio será configurado com PIN inicial de vendedor: <strong>1234</strong></p>
+          <p>Seu negócio será criado limpo e pronto para uso, com o seu nome e PIN configurados.</p>
           <p className="mt-0.5 text-[11px] text-neutral-400">
-            Você poderá alterar o PIN e criar outros vendedores a qualquer momento.
+            Você poderá cadastrar novos vendedores, produtos e clientes a qualquer momento.
           </p>
         </div>
       </div>

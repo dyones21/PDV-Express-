@@ -27,12 +27,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // User to Business mapping (only readable by document owner, creation only for non-existing business, never updated or deleted)
+    // User to Business mapping (only readable and creatable by document owner, never updated or deleted)
     match /userBusinessMap/{uid} {
       allow read: if isAuthenticated() && request.auth.uid == uid;
-      allow create: if isAuthenticated() && request.auth.uid == uid
-        && !exists(/databases/$(database)/documents/businesses/$(request.resource.data.businessId));
-      allow update, delete: if false;
+      allow create: if isAuthenticated() && request.auth.uid == uid;
+      allow update, delete: if isPlatformAdmin();
     }
 
     // Multi-tenant business documents and collections
@@ -44,7 +43,7 @@ service cloud.firestore {
       allow create: if isAuthenticated() && (
         isPlatformAdmin() || 
         isOwnerOfBusiness(businessId) || 
-        request.resource.data.ownerEmail == request.auth.token.email
+        (request.resource.data.ownerEmail != null && request.auth.token.email != null && request.resource.data.ownerEmail.lower() == request.auth.token.email.lower())
       );
 
       // Platform admin can toggle active. Owner CANNOT change the active field

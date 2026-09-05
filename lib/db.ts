@@ -12,6 +12,7 @@ import {
   orderBy,
   serverTimestamp,
   SnapshotMetadata,
+  writeBatch,
 } from 'firebase/firestore';
 import { db, DEFAULT_BUSINESS_ID, ensureAuthSession } from './firebase';
 import { Customer, Product, Sale, Payment, Seller, Business } from '@/types';
@@ -289,6 +290,76 @@ export async function ensureDefaultBusinessData(
     }
   } catch (err) {
     console.warn('ensureDefaultBusinessData notice:', err);
+  }
+}
+
+/**
+ * Provisions a fresh business without any sample products, customers, sales or payments.
+ * Creates the business document and a single 'owner' seller with the user's name and 4-digit PIN.
+ */
+export async function provisionNewBusiness(
+  businessId: string,
+  businessName: string,
+  ownerName: string,
+  ownerPin: string,
+  ownerEmail?: string
+): Promise<void> {
+  await ensureAuthSession();
+  const bRef = getBusinessRef(businessId);
+  const bSnap = await getDoc(bRef);
+
+  if (!bSnap.exists()) {
+    await setDoc(bRef, cleanUndefined({
+      id: businessId,
+      name: businessName,
+      createdAt: new Date().toISOString(),
+      active: false,
+      ownerEmail: ownerEmail || undefined,
+    }));
+  }
+
+  // Cria UM único vendedor (o dono, usando o nome e PIN informados no cadastro, role: 'owner')
+  const cleanPin = ownerPin.trim();
+  const salt = generateSalt();
+  const hash = await hashPin(cleanPin, salt);
+  const sellerRef = doc(getSellersCol(businessId));
+  await setDoc(sellerRef, cleanUndefined({
+    name: ownerName.trim(),
+    role: 'owner',
+    pinHash: hash,
+    pinSalt: salt,
+    active: true,
+    createdAt: new Date().toISOString(),
+  }));
+}
+
+/**
+ * Deletes all documents from products, customers, sales, and payments subcollections
+ * for the specified business, keeping sellers and the business doc intact.
+ */
+export async function clearBusinessTestData(businessId = DEFAULT_BUSINESS_ID): Promise<void> {
+  await ensureAuthSession();
+
+  const collectionsToClear = [
+    getProductsCol(businessId),
+    getCustomersCol(businessId),
+    getSalesCol(businessId),
+    getPaymentsCol(businessId),
+  ];
+
+  for (const colRef of collectionsToClear) {
+    const snap = await getDocs(colRef);
+    if (snap.empty) continue;
+
+    const docs = snap.docs;
+    for (let i = 0; i < docs.length; i += 400) {
+      const chunk = docs.slice(i, i + 400);
+      const batch = writeBatch(db);
+      for (const d of chunk) {
+        batch.delete(d.ref);
+      }
+      await batch.commit();
+    }
   }
 }
 

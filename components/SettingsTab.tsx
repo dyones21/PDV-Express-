@@ -4,8 +4,9 @@ import React, { useState } from 'react';
 import { Seller, Sale, Customer } from '@/types';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
 import { useNetworkSync } from '@/hooks/use-network-sync';
+import { useBusiness } from '@/context/BusinessContext';
 import { exportSalesCsv, exportDebtorsCsv } from '@/lib/export-csv';
-import { updateSeller } from '@/lib/db';
+import { updateSeller, clearBusinessTestData } from '@/lib/db';
 import { ConfirmDialog } from './ConfirmDialog';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -28,7 +29,8 @@ import {
   X,
   KeyRound,
   ShieldAlert,
-  LogOut
+  LogOut,
+  Trash2
 } from 'lucide-react';
 import { SellerSwitchModal } from './SellerSwitchModal';
 
@@ -42,10 +44,17 @@ interface SettingsTabProps {
 export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTabProps) {
   const { activeSeller, isOwner, createSeller } = useSellerAuth();
   const { isOnline, canInstallPwa, promptInstall } = useNetworkSync();
+  const { businessId } = useBusiness();
   const [isSwitchModalOpen, setIsSwitchModalOpen] = useState(false);
   const [exportStartDate, setExportStartDate] = useState('');
   const [exportEndDate, setExportEndDate] = useState('');
   const [exportSuccessMsg, setExportSuccessMsg] = useState('');
+
+  // Clear business data state
+  const [isClearDataDialogOpen, setIsClearDataDialogOpen] = useState(false);
+  const [isClearingData, setIsClearingData] = useState(false);
+  const [clearDataSuccessMsg, setClearDataSuccessMsg] = useState('');
+  const [clearDataErrorMsg, setClearDataErrorMsg] = useState('');
 
   // New Seller Form Modal State
   const [isAddSellerOpen, setIsAddSellerOpen] = useState(false);
@@ -57,6 +66,26 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
   const [sellerToToggle, setSellerToToggle] = useState<{ seller: Seller; nextActive: boolean } | null>(null);
   const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+
+  const handleConfirmClearData = async () => {
+    try {
+      setIsClearingData(true);
+      setClearDataErrorMsg('');
+      setClearDataSuccessMsg('');
+
+      await clearBusinessTestData(businessId);
+
+      setIsClearDataDialogOpen(false);
+      setClearDataSuccessMsg('Dados limpos com sucesso! Produtos, clientes, vendas e pagamentos foram removidos.');
+      setTimeout(() => setClearDataSuccessMsg(''), 6000);
+    } catch (err: any) {
+      console.error('Erro ao limpar dados do negócio:', err);
+      setClearDataErrorMsg('Falha ao limpar dados: ' + (err?.message || 'Tente novamente.'));
+      setIsClearDataDialogOpen(false);
+    } finally {
+      setIsClearingData(false);
+    }
+  };
 
   const handleConfirmSignOut = async () => {
     try {
@@ -428,6 +457,47 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
         </div>
       </div>
 
+      {/* Zona Perigosa: Limpar Dados (Visível apenas para o Dono/Owner) */}
+      {isOwner && (
+        <div className="bg-red-50/90 rounded-2xl p-4 border border-red-200 shadow-sm space-y-3">
+          <div className="flex items-start gap-2.5">
+            <div className="p-2 rounded-xl bg-red-100 text-red-700 shrink-0 mt-0.5">
+              <Trash2 className="w-4 h-4 text-red-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-bold text-red-950">Zona de Perigo: Limpar Dados</h3>
+              <p className="text-xs text-red-700 mt-1 leading-relaxed">
+                Isso apaga todos os produtos, clientes, vendas e pagamentos deste negócio. Não pode ser desfeito.
+              </p>
+            </div>
+          </div>
+
+          {clearDataSuccessMsg && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-xs text-emerald-800 font-semibold">
+              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{clearDataSuccessMsg}</span>
+            </div>
+          )}
+
+          {clearDataErrorMsg && (
+            <div className="p-3 bg-red-100 border border-red-300 rounded-xl flex items-center gap-2 text-xs text-red-800">
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              <span>{clearDataErrorMsg}</span>
+            </div>
+          )}
+
+          <button
+            id="btn-clear-test-data"
+            type="button"
+            onClick={() => setIsClearDataDialogOpen(true)}
+            className="w-full py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 active:scale-98 text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-2"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Limpar Dados</span>
+          </button>
+        </div>
+      )}
+
       {/* Sair do Sistema (Logout Completo do Dispositivo) */}
       <div className="bg-white rounded-2xl p-4 border border-neutral-200/80 shadow-sm space-y-3">
         <div>
@@ -591,6 +661,22 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
         variant={sellerToToggle?.nextActive ? 'primary' : 'warning'}
         onConfirm={handleConfirmToggleSeller}
         onCancel={() => setSellerToToggle(null)}
+      />
+
+      {/* Modal de Confirmação: Limpar Dados do Negócio */}
+      <ConfirmDialog
+        isOpen={isClearDataDialogOpen}
+        title="Limpar Dados do Negócio?"
+        message="Isso apaga todos os produtos, clientes, vendas e pagamentos deste negócio. Não pode ser desfeito. Deseja realmente prosseguir?"
+        confirmLabel={isClearingData ? 'Apagando...' : 'Sim, Limpar Dados'}
+        cancelLabel="Cancelar"
+        variant="danger"
+        onConfirm={handleConfirmClearData}
+        onCancel={() => {
+          if (!isClearingData) {
+            setIsClearDataDialogOpen(false);
+          }
+        }}
       />
 
       {/* Modal de Confirmação: Sair do Sistema (Logout Completo do Dispositivo) */}
