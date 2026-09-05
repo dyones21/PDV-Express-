@@ -206,7 +206,7 @@ function MainAppContent() {
 }
 
 export default function HomePage() {
-  const [currentUser, setCurrentUser] = useState<User | null | undefined>(undefined);
+  const [currentUser, setCurrentUser] = useState<User | null | undefined>(() => auth.currentUser ?? undefined);
   const [resolvedBusinessId, setResolvedBusinessId] = useState<string | null | undefined>(undefined);
   const [businessName, setBusinessName] = useState<string>('Queijaria Artesanal da Serra');
   const [isBusinessActive, setIsBusinessActive] = useState<boolean>(true);
@@ -214,7 +214,18 @@ export default function HomePage() {
   const [authView, setAuthView] = useState<'login' | 'signup'>('login');
 
   useEffect(() => {
+    let hasResolved = false;
+
+    // Timeout de segurança: no máximo 2.5 segundos para não prender o usuário na tela de splash
+    const safetyTimer = setTimeout(() => {
+      if (!hasResolved) {
+        setCurrentUser((prev) => (prev === undefined ? (auth.currentUser || null) : prev));
+      }
+    }, 2500);
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      hasResolved = true;
+      clearTimeout(safetyTimer);
       setCurrentUser(user);
       if (user) {
         setIsResolving(true);
@@ -240,7 +251,10 @@ export default function HomePage() {
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      clearTimeout(safetyTimer);
+      unsubscribe();
+    };
   }, []);
 
   // 1. Verificando autenticação do dispositivo no Firebase Auth

@@ -2,75 +2,126 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // 1. Regra Global Catch-All de Segurança (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Funções auxiliares de autenticação e controle de acesso multi-tenant
     function isAuthenticated() {
       return request.auth != null;
     }
 
+    // Identifica Administrador da Plataforma (email do gestor ou registrado na coleção platformAdmins)
     function isPlatformAdmin() {
-      return isAuthenticated() && exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid));
+      return isAuthenticated() && (
+        (request.auth.token.email != null && request.auth.token.email.lower() == 'dyones21@gmail.com') ||
+        exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid))
+      );
     }
 
+    // Verifica se o usuário autenticado possui registro de negócio associado
     function hasBusinessMap() {
       return isAuthenticated() && exists(/databases/$(database)/documents/userBusinessMap/$(request.auth.uid));
     }
 
+    // Retorna o businessId mapeado para o usuário atual
     function getUserBusinessId() {
       return get(/databases/$(database)/documents/userBusinessMap/$(request.auth.uid)).data.businessId;
     }
 
+    // Valida se o usuário autenticado é o proprietário do negócio solicitado (via userBusinessMap ou ownerUid no documento do negócio)
     function isOwnerOfBusiness(businessId) {
-      return hasBusinessMap() && getUserBusinessId() == businessId;
+      return isAuthenticated() && (
+        (hasBusinessMap() && getUserBusinessId() == businessId) ||
+        (exists(/databases/$(database)/documents/businesses/$(businessId)) &&
+         get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerUid == request.auth.uid)
+      );
     }
 
-    // Platform Admins collection (only checked internally by rules, never readable or writable via client SDK)
+    // 3. Coleção: platformAdmins
+    // Apenas administradores da plataforma podem ler ou gerenciar outros administradores
     match /platformAdmins/{uid} {
-      allow read, write: if false;
+      allow read: if isAuthenticated() && (request.auth.uid == uid || isPlatformAdmin());
+      allow write: if isPlatformAdmin();
     }
 
-    // User to Business mapping (only readable and creatable by document owner, never updated or deleted)
+    // 4. Coleção: userBusinessMap
+    // Mapeamento essencial entre UID do Firebase Auth e o ID da empresa do MEI
     match /userBusinessMap/{uid} {
-      allow read: if isAuthenticated() && request.auth.uid == uid;
-      allow create: if isAuthenticated() && request.auth.uid == uid;
-      allow update, delete: if isPlatformAdmin();
+      // O próprio usuário ou o administrador podem ler o mapeamento
+      allow read: if isAuthenticated() && (request.auth.uid == uid || isPlatformAdmin());
+
+      // O próprio usuário pode criar seu mapeamento inicial
+      allow create: if isAuthenticated() && request.auth.uid == uid &&
+        request.resource.data.businessId is string &&
+        request.resource.data.businessId.size() > 0;
+
+      // O usuário pode atualizar o nome do negócio ou metadados,
+      // mas é terminantemente proibido de alterar o businessId para outro ID
+      allow update: if isAuthenticated() && (
+        isPlatformAdmin() || (
+          request.auth.uid == uid &&
+          request.resource.data.businessId == resource.data.businessId
+        )
+      );
+
+      // Exclusão permitida para administradores ou pelo próprio usuário (ex: rollback de cadastro incompleto)
+      allow delete: if isAuthenticated() && (isPlatformAdmin() || request.auth.uid == uid);
     }
 
-    // Multi-tenant business documents and collections
+    // 5. Coleção Raiz: businesses (Multi-tenant)
     match /businesses/{businessId} {
-      // Platform admin can read any business; owner can read only their own business
-      allow read: if isPlatformAdmin() || isOwnerOfBusiness(businessId);
-
-      // Creation allowed by platform admin or owner creating their business
-      allow create: if isAuthenticated() && (
-        isPlatformAdmin() || 
+      // Leitura permitida para o admin da plataforma ou para o dono do negócio
+      allow read: if isPlatformAdmin() || 
         isOwnerOfBusiness(businessId) || 
+        (isAuthenticated() && resource.data.ownerUid == request.auth.uid);
+
+      // Criação permitida para admin da plataforma ou para o usuário criando sua nova empresa
+      allow create: if isAuthenticated() && (
+        isPlatformAdmin() ||
+        (request.resource.data.ownerUid != null && request.resource.data.ownerUid == request.auth.uid) ||
+        isOwnerOfBusiness(businessId) ||
         (request.resource.data.ownerEmail != null && request.auth.token.email != null && request.resource.data.ownerEmail.lower() == request.auth.token.email.lower())
       );
 
-      // Platform admin can toggle active. Owner CANNOT change the active field
+      // Atualização: Admin pode alterar qualquer campo (inclusive suspender/ativar via 'active').
+      // O dono da empresa pode atualizar dados cadastrais, MAS NÃO PODE alterar o campo 'active'
       allow update: if isPlatformAdmin() || (
-        isOwnerOfBusiness(businessId) && request.resource.data.active == resource.data.active
+        (isOwnerOfBusiness(businessId) || (resource.data.ownerUid == request.auth.uid)) &&
+        request.resource.data.active == resource.data.active
       );
 
-      allow delete: if isPlatformAdmin();
+      // Exclusão permitida para administradores da plataforma ou pelo dono da conta recém-criada
+      allow delete: if isAuthenticated() && (
+        isPlatformAdmin() || 
+        (resource.data.ownerUid != null && resource.data.ownerUid == request.auth.uid) ||
+        isOwnerOfBusiness(businessId)
+      );
 
+      // 5.1 Subcoleção: sellers (Vendedores com PIN de segurança)
       match /sellers/{sellerId} {
-        allow read, write: if isOwnerOfBusiness(businessId) || isPlatformAdmin();
+        allow read, write: if isPlatformAdmin() || isOwnerOfBusiness(businessId);
       }
-      
+
+      // 5.2 Subcoleção: customers (Clientes da rota)
       match /customers/{customerId} {
-        allow read, write: if isOwnerOfBusiness(businessId) || isPlatformAdmin();
+        allow read, write: if isPlatformAdmin() || isOwnerOfBusiness(businessId);
       }
-      
+
+      // 5.3 Subcoleção: products (Catálogo e controle de estoque)
       match /products/{productId} {
-        allow read, write: if isOwnerOfBusiness(businessId) || isPlatformAdmin();
+        allow read, write: if isPlatformAdmin() || isOwnerOfBusiness(businessId);
       }
-      
+
+      // 5.4 Subcoleção: sales (Vendas à vista e fiado)
       match /sales/{saleId} {
-        allow read, write: if isOwnerOfBusiness(businessId) || isPlatformAdmin();
+        allow read, write: if isPlatformAdmin() || isOwnerOfBusiness(businessId);
       }
-      
+
+      // 5.5 Subcoleção: payments (Recebimentos e abatimentos de fiado)
       match /payments/{paymentId} {
-        allow read, write: if isOwnerOfBusiness(businessId) || isPlatformAdmin();
+        allow read, write: if isPlatformAdmin() || isOwnerOfBusiness(businessId);
       }
     }
   }

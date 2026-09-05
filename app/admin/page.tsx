@@ -47,6 +47,7 @@ export default function AdminPage() {
           id: docSnap.id,
           name: data.name || 'Sem nome',
           ownerEmail: data.ownerEmail,
+          ownerUid: data.ownerUid,
           createdAt: data.createdAt || new Date().toISOString(),
           active: data.active !== false,
         };

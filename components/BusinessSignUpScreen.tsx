@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { createUserWithEmailAndPassword, User as FirebaseUser } from 'firebase/auth';
-import { collection, doc, setDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { provisionNewBusiness } from '@/lib/db';
 import { ShoppingBag, Lock, Mail, Building2, Eye, EyeOff, AlertCircle, ArrowRight, Sparkles, User, KeyRound } from 'lucide-react';
@@ -70,6 +70,7 @@ export function BusinessSignUpScreen({
 
     setIsLoading(true);
     let createdUser: FirebaseUser | null = null;
+    let newBusinessId: string | null = null;
 
     try {
       // 1. Cria o usuário no Firebase Auth
@@ -78,7 +79,7 @@ export function BusinessSignUpScreen({
       const uid = cred.user.uid;
 
       // 2. Gera um novo businessId único do Firestore
-      const newBusinessId = doc(collection(db, 'businesses')).id;
+      newBusinessId = doc(collection(db, 'businesses')).id;
 
       // 3. Cria documento userBusinessMap/{uid}
       await setDoc(doc(db, 'userBusinessMap', uid), {
@@ -88,11 +89,12 @@ export function BusinessSignUpScreen({
         updatedAt: new Date().toISOString(),
       });
 
-      // 4. Cria documento businesses/{newBusinessId} (inicia desativado aguardando aprovação no /admin)
+      // 4. Cria documento businesses/{newBusinessId} com ownerEmail e ownerUid
       await setDoc(doc(db, 'businesses', newBusinessId), {
         id: newBusinessId,
         name: cleanBusinessName,
         ownerEmail: normalizedEmail,
+        ownerUid: uid,
         createdAt: new Date().toISOString(),
         active: false,
       });
@@ -103,16 +105,29 @@ export function BusinessSignUpScreen({
         cleanBusinessName,
         cleanOwnerName,
         cleanOwnerPin,
-        normalizedEmail
+        normalizedEmail,
+        uid
       );
 
       if (onSignUpSuccess) {
         onSignUpSuccess();
       }
     } catch (err: unknown) {
-      // Se a gravação no Firestore falhar após criar o usuário no Auth, fazemos rollback
-      // para evitar que o e-mail fique travado como "já em uso" em tentativas seguintes.
+      // Se a gravação no Firestore falhar após criar o usuário no Auth, fazemos rollback limpo
+      // para evitar documentos órfãos e e-mail travado
+      if (newBusinessId) {
+        try {
+          await deleteDoc(doc(db, 'businesses', newBusinessId));
+        } catch {
+          // ignora
+        }
+      }
       if (createdUser) {
+        try {
+          await deleteDoc(doc(db, 'userBusinessMap', createdUser.uid));
+        } catch {
+          // ignora
+        }
         try {
           await createdUser.delete();
         } catch {

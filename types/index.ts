@@ -2,6 +2,7 @@ export interface Business {
   id: string;
   name: string;
   ownerEmail?: string;
+  ownerUid?: string;
   createdAt: string;
   active?: boolean;
 }

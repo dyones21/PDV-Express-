@@ -23,25 +23,37 @@ const firebaseConfig = {
 // Initialize Firebase App
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Initialize Firestore with robust multi-tab offline persistence and ignoreUndefinedProperties
+const targetDbId = configJson.firestoreDatabaseId && configJson.firestoreDatabaseId !== '(default)' 
+  ? configJson.firestoreDatabaseId 
+  : undefined;
+
+// Initialize Firestore with robust multi-tab offline persistence and fallback
 let firestoreDb: ReturnType<typeof getFirestore>;
 
 try {
   if (typeof window !== 'undefined') {
-    firestoreDb = initializeFirestore(app, {
+    const settings = {
       ignoreUndefinedProperties: true,
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager(),
       }),
-    }, configJson.firestoreDatabaseId || '(default)');
+    };
+    firestoreDb = targetDbId
+      ? initializeFirestore(app, settings, targetDbId)
+      : initializeFirestore(app, settings);
   } else {
-    firestoreDb = initializeFirestore(app, {
-      ignoreUndefinedProperties: true,
-    }, configJson.firestoreDatabaseId || '(default)');
+    const settings = { ignoreUndefinedProperties: true };
+    firestoreDb = targetDbId
+      ? initializeFirestore(app, settings, targetDbId)
+      : initializeFirestore(app, settings);
   }
 } catch {
-  // If already initialized
-  firestoreDb = getFirestore(app, configJson.firestoreDatabaseId || '(default)');
+  // If already initialized or if persistentLocalCache is not permitted in current context (e.g. iframe)
+  try {
+    firestoreDb = targetDbId ? getFirestore(app, targetDbId) : getFirestore(app);
+  } catch {
+    firestoreDb = getFirestore(app);
+  }
 }
 
 export const db = firestoreDb;

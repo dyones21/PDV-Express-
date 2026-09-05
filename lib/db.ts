@@ -302,7 +302,8 @@ export async function provisionNewBusiness(
   businessName: string,
   ownerName: string,
   ownerPin: string,
-  ownerEmail?: string
+  ownerEmail?: string,
+  ownerUid?: string
 ): Promise<void> {
   await ensureAuthSession();
   const bRef = getBusinessRef(businessId);
@@ -315,6 +316,7 @@ export async function provisionNewBusiness(
       createdAt: new Date().toISOString(),
       active: false,
       ownerEmail: ownerEmail || undefined,
+      ownerUid: ownerUid || undefined,
     }));
   }
 
