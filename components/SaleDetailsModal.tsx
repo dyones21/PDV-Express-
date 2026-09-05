@@ -5,6 +5,7 @@ import { Sale } from '@/types';
 import { formatCurrency, formatDateBr, formatDateTimeBr } from '@/lib/format';
 import { cancelSale } from '@/lib/db';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
+import { useBusiness } from '@/context/BusinessContext';
 import { 
   X, 
   CheckCircle2, 
@@ -28,6 +29,7 @@ interface SaleDetailsModalProps {
 }
 
 export function SaleDetailsModal({ sale, onClose }: SaleDetailsModalProps) {
+  const { businessId } = useBusiness();
   const { activeSeller } = useSellerAuth();
   const [isConfirmingCancel, setIsConfirmingCancel] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -66,7 +68,7 @@ export function SaleDetailsModal({ sale, onClose }: SaleDetailsModalProps) {
       setIsCancelling(true);
       setCancelError('');
       await cancelSale(
-        undefined,
+        businessId,
         sale.id,
         activeSeller?.name || 'Dono do Negócio',
         'Cancelada a pedido do administrador'

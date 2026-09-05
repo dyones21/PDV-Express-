@@ -5,6 +5,7 @@ import { Product } from '@/types';
 import { formatCurrency, formatCurrencyInput, parseCurrencyToNumber } from '@/lib/format';
 import { addProduct, updateProduct, restockProduct } from '@/lib/db';
 import { useNetworkSync } from '@/hooks/use-network-sync';
+import { useBusiness } from '@/context/BusinessContext';
 import { 
   Package, 
   Plus, 
@@ -29,6 +30,7 @@ interface ProductsTabProps {
 }
 
 export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
+  const { businessId } = useBusiness();
   const { isOnline } = useNetworkSync();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
@@ -174,7 +176,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
     try {
       setIsSubmitting(true);
       if (editingProduct) {
-        await updateProduct(undefined, editingProduct.id, {
+        await updateProduct(businessId, editingProduct.id, {
           name: name.trim(),
           price: parsedPrice,
           costPrice: parsedCost,
@@ -183,7 +185,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
           category,
         });
       } else {
-        await addProduct(undefined, {
+        await addProduct(businessId, {
           name: name.trim(),
           price: parsedPrice,
           costPrice: parsedCost,
@@ -259,7 +261,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
       setIsRestocking(true);
 
       const restockOperation = async () => {
-        await restockProduct(undefined, restockProductTarget.id, added, newCost, newSalePrice);
+        await restockProduct(businessId, restockProductTarget.id, added, newCost, newSalePrice);
         return { success: true };
       };
 
@@ -302,7 +304,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
 
   const handleToggleActive = async (p: Product) => {
     try {
-      await updateProduct(undefined, p.id, {
+      await updateProduct(businessId, p.id, {
         active: !p.active,
       });
     } catch (err: any) {

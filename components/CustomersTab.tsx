@@ -5,6 +5,7 @@ import { Customer, Sale } from '@/types';
 import { formatCurrency, formatDateBr, getTodayDateString, formatPhone, formatCpf } from '@/lib/format';
 import { addCustomer, updateCustomer } from '@/lib/db';
 import { ConfirmDialog } from './ConfirmDialog';
+import { useBusiness } from '@/context/BusinessContext';
 import { 
   Users, 
   Search, 
@@ -33,6 +34,7 @@ interface CustomersTabProps {
 }
 
 export function CustomersTab({ customers, sales, onOpenSaleDetails, initialSearch = '' }: CustomersTabProps) {
+  const { businessId } = useBusiness();
   const [searchTerm, setSearchTerm] = useState(initialSearch);
   const [prevInitialSearch, setPrevInitialSearch] = useState(initialSearch);
 
@@ -101,7 +103,7 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails, initialSearc
     if (!customerToToggle) return;
     const { customer, nextState } = customerToToggle;
     try {
-      await updateCustomer(undefined, customer.id, {
+      await updateCustomer(businessId, customer.id, {
         active: nextState,
       });
       setCustomerToToggle(null);
@@ -117,7 +119,7 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails, initialSearc
     try {
       setIsSubmitting(true);
       if (editingCustomer) {
-        await updateCustomer(undefined, editingCustomer.id, {
+        await updateCustomer(businessId, editingCustomer.id, {
           name: name.trim(),
           phone: phone.trim() || undefined,
           cpf: cpf.trim() || undefined,
@@ -128,7 +130,7 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails, initialSearc
         });
         setEditingCustomer(null);
       } else {
-        await addCustomer(undefined, {
+        await addCustomer(businessId, {
           name: name.trim(),
           phone: phone.trim() || undefined,
           cpf: cpf.trim() || undefined,

@@ -7,8 +7,7 @@ import {
   subscribeProducts, 
   subscribeSales, 
   subscribePayments, 
-  subscribeSellers,
-  DEFAULT_BUSINESS_ID 
+  subscribeSellers 
 } from '@/lib/db';
 import { SellerAuthProvider } from '@/hooks/use-seller-auth';
 import { Header } from '@/components/Header';
@@ -26,7 +25,7 @@ import { SellerSwitchModal } from '@/components/SellerSwitchModal';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
 import { DeviceLoginScreen } from '@/components/DeviceLoginScreen';
 import { BusinessSignUpScreen } from '@/components/BusinessSignUpScreen';
-import { BusinessProvider } from '@/context/BusinessContext';
+import { BusinessProvider, useBusiness } from '@/context/BusinessContext';
 import { 
   auth, 
   resolveBusinessId, 
@@ -38,6 +37,7 @@ import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { AlertCircle, RefreshCw, LogOut } from 'lucide-react';
 
 function MainAppContent() {
+  const { businessId } = useBusiness();
   const { activeSeller, isLoading: isSellerAuthLoading } = useSellerAuth();
   const [activeTab, setActiveTab] = useState<TabType>('hoje');
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -52,31 +52,33 @@ function MainAppContent() {
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
 
   useEffect(() => {
+    if (!businessId) return;
+
     // 1. Subscribe Customers
-    const unsubCust = subscribeCustomers(DEFAULT_BUSINESS_ID, (list, meta) => {
+    const unsubCust = subscribeCustomers(businessId, (list, meta) => {
       setCustomers(list);
       if (meta.hasPendingWrites) setHasPendingWrites(true);
     });
 
     // 2. Subscribe Products
-    const unsubProd = subscribeProducts(DEFAULT_BUSINESS_ID, (list) => {
+    const unsubProd = subscribeProducts(businessId, (list) => {
       setProducts(list);
     });
 
     // 3. Subscribe Sales
-    const unsubSales = subscribeSales(DEFAULT_BUSINESS_ID, (list, meta) => {
+    const unsubSales = subscribeSales(businessId, (list, meta) => {
       setSales(list);
       setHasPendingWrites(meta.hasPendingWrites);
     });
 
     // 4. Subscribe Payments
-    const unsubPay = subscribePayments(DEFAULT_BUSINESS_ID, (list, meta) => {
+    const unsubPay = subscribePayments(businessId, (list, meta) => {
       setPayments(list);
       if (meta.hasPendingWrites) setHasPendingWrites(true);
     });
 
     // 5. Subscribe Sellers
-    const unsubSellers = subscribeSellers(DEFAULT_BUSINESS_ID, (list) => {
+    const unsubSellers = subscribeSellers(businessId, (list) => {
       setSellers(list);
     });
 
@@ -87,7 +89,7 @@ function MainAppContent() {
       unsubPay();
       unsubSellers();
     };
-  }, []);
+  }, [businessId]);
 
   const pendingDebtorsCount = customers.filter((c) => (c.totalDebt || 0) > 0).length;
 
@@ -386,6 +388,7 @@ export default function HomePage() {
   // 5. Usuário autenticado e negócio resolvido e ativo
   return (
     <BusinessProvider
+      key={resolvedBusinessId || 'default'}
       businessId={resolvedBusinessId || FALLBACK_BUSINESS_ID}
       businessName={businessName}
       userEmail={currentUser.email}

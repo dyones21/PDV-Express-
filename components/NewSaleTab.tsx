@@ -5,6 +5,7 @@ import { Customer, Product, SaleItem, PaymentStatus, PaymentMethod } from '@/typ
 import { formatCurrency, formatCurrencyInput, parseCurrencyToNumber, formatPhone, getTodayDateString, formatDateBr } from '@/lib/format';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
 import { useNetworkSync } from '@/hooks/use-network-sync';
+import { useBusiness } from '@/context/BusinessContext';
 import { recordSale, addCustomer, updateCustomer } from '@/lib/db';
 import { 
   User, 
@@ -33,6 +34,7 @@ interface NewSaleTabProps {
 }
 
 export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocusChange }: NewSaleTabProps) {
+  const { businessId } = useBusiness();
   const { activeSeller } = useSellerAuth();
   const { isOnline } = useNetworkSync();
 
@@ -123,7 +125,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
     if (!newCustName.trim()) return;
 
     try {
-      const newId = await addCustomer(undefined, {
+      const newId = await addCustomer(businessId, {
         name: newCustName.trim(),
         phone: newCustPhone.trim() || undefined,
         address: newCustAddress.trim() || undefined,
@@ -222,7 +224,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
     const calculatedDate = calculateDaysFromToday(days);
     try {
       setIsSavingReminder(true);
-      await updateCustomer(undefined, successSaleData.customerId, {
+      await updateCustomer(businessId, successSaleData.customerId, {
         nextVisitReminder: calculatedDate,
       });
       setSelectedReminderDate(calculatedDate);
@@ -238,7 +240,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
     if (!successSaleData?.customerId || !dateStr) return;
     try {
       setIsSavingReminder(true);
-      await updateCustomer(undefined, successSaleData.customerId, {
+      await updateCustomer(businessId, successSaleData.customerId, {
         nextVisitReminder: dateStr,
       });
       setSelectedReminderDate(dateStr);
@@ -337,7 +339,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
           longitude: locationCoords.longitude,
         };
 
-        const saleId = await recordSale(undefined, fullSaleData);
+        const saleId = await recordSale(businessId, fullSaleData);
         // Cache result in ref to avoid duplicates if timeout fires right before/during resolution
         pendingSavedSaleRef.current = { id: saleId, saleData: fullSaleData };
         return { saleId, saleData: fullSaleData };

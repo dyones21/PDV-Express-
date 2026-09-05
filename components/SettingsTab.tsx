@@ -164,7 +164,7 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
     if (!sellerToToggle) return;
     const { seller, nextActive } = sellerToToggle;
     try {
-      await updateSeller(undefined, seller.id, { active: nextActive });
+      await updateSeller(businessId, seller.id, { active: nextActive });
       setSellerToToggle(null);
     } catch (err: any) {
       alert('Erro ao alterar status do vendedor: ' + err.message);

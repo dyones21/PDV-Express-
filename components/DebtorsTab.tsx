@@ -6,6 +6,7 @@ import { formatCurrency, formatCurrencyInput, parseCurrencyToNumber, formatDateB
 import { recordPayment, SalePaymentUpdate } from '@/lib/db';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
 import { useNetworkSync } from '@/hooks/use-network-sync';
+import { useBusiness } from '@/context/BusinessContext';
 import { 
   HandCoins, 
   Search, 
@@ -29,6 +30,7 @@ interface DebtorsTabProps {
 }
 
 export function DebtorsTab({ customers, sales, onOpenSaleDetails }: DebtorsTabProps) {
+  const { businessId } = useBusiness();
   const { activeSeller } = useSellerAuth();
   const { isOnline } = useNetworkSync();
   const [searchTerm, setSearchTerm] = useState('');
@@ -144,7 +146,7 @@ export function DebtorsTab({ customers, sales, onOpenSaleDetails }: DebtorsTabPr
 
       const paymentOperation = async () => {
         await recordPayment(
-          undefined,
+          businessId,
           {
             customerId: settleCustomer.id,
             customerName: settleCustomer.name,

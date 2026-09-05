@@ -2,9 +2,9 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Seller } from '@/types';
-import { subscribeSellers, ensureDefaultBusinessData, addSeller as addSellerDb } from '@/lib/db';
+import { subscribeSellers, addSeller as addSellerDb } from '@/lib/db';
 import { verifyPin } from '@/lib/security';
-import { DEFAULT_BUSINESS_ID } from '@/lib/firebase';
+import { useBusiness } from '@/context/BusinessContext';
 
 interface SellerAuthContextType {
   sellers: Seller[];
@@ -23,21 +23,21 @@ const STORAGE_KEY = 'pdv_active_seller_id';
 const LEGACY_STORAGE_KEY = 'vendas_queijo_active_seller_id';
 
 export function SellerAuthProvider({ children }: { children: React.ReactNode }) {
+  const { businessId } = useBusiness();
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [activeSeller, setActiveSeller] = useState<Seller | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Initialize default data if needed
-    ensureDefaultBusinessData().catch((err) => console.warn('Init data warning:', err));
+    if (!businessId) return;
 
-    // 2. Subscribe to sellers
-    const unsubscribe = subscribeSellers(DEFAULT_BUSINESS_ID, (list) => {
+    // Subscribe to sellers
+    const unsubscribe = subscribeSellers(businessId, (list) => {
       setSellers(list);
 
       // Check stored seller ID
       const storedId = typeof window !== 'undefined'
-        ? localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY)
+        ? localStorage.getItem(`${STORAGE_KEY}_${businessId}`) || localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY)
         : null;
       if (storedId) {
         const found = list.find((s) => s.id === storedId);
@@ -46,6 +46,7 @@ export function SellerAuthProvider({ children }: { children: React.ReactNode }) 
         } else {
           setActiveSeller(null);
           if (typeof window !== 'undefined') {
+            localStorage.removeItem(`${STORAGE_KEY}_${businessId}`);
             localStorage.removeItem(STORAGE_KEY);
             localStorage.removeItem(LEGACY_STORAGE_KEY);
           }
@@ -58,7 +59,7 @@ export function SellerAuthProvider({ children }: { children: React.ReactNode }) 
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [businessId]);
 
   const loginWithPin = async (sellerId: string, pin: string) => {
     const seller = sellers.find((s) => s.id === sellerId);
@@ -70,6 +71,7 @@ export function SellerAuthProvider({ children }: { children: React.ReactNode }) 
       // Fallback if no pin configured
       setActiveSeller(seller);
       if (typeof window !== 'undefined') {
+        localStorage.setItem(`${STORAGE_KEY}_${businessId}`, seller.id);
         localStorage.setItem(STORAGE_KEY, seller.id);
       }
       return { success: true };
@@ -79,6 +81,7 @@ export function SellerAuthProvider({ children }: { children: React.ReactNode }) 
     if (isValid) {
       setActiveSeller(seller);
       if (typeof window !== 'undefined') {
+        localStorage.setItem(`${STORAGE_KEY}_${businessId}`, seller.id);
         localStorage.setItem(STORAGE_KEY, seller.id);
       }
       return { success: true };
@@ -91,6 +94,7 @@ export function SellerAuthProvider({ children }: { children: React.ReactNode }) 
     if (seller.active === false) return;
     setActiveSeller(seller);
     if (typeof window !== 'undefined') {
+      localStorage.setItem(`${STORAGE_KEY}_${businessId}`, seller.id);
       localStorage.setItem(STORAGE_KEY, seller.id);
     }
   };
@@ -98,12 +102,13 @@ export function SellerAuthProvider({ children }: { children: React.ReactNode }) 
   const logout = () => {
     setActiveSeller(null);
     if (typeof window !== 'undefined') {
+      localStorage.removeItem(`${STORAGE_KEY}_${businessId}`);
       localStorage.removeItem(STORAGE_KEY);
     }
   };
 
   const createSeller = async (name: string, role: 'owner' | 'seller', pin: string) => {
-    const newId = await addSellerDb(DEFAULT_BUSINESS_ID, { name, role, pin });
+    const newId = await addSellerDb(businessId, { name, role, pin });
     return newId;
   };
 
