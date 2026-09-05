@@ -62,6 +62,13 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
   const [partialPaidInput, setPartialPaidInput] = useState<string>('');
   const [notes, setNotes] = useState('');
 
+  // Helper para selecionar Cliente Avulso garantindo reset de fiado
+  const handleSelectAnonymous = () => {
+    setIsAnonymous(true);
+    setSelectedCustomerId('');
+    setPaymentOption('paid_full');
+  };
+
   // UI state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successSaleData, setSuccessSaleData] = useState<any | null>(null);
@@ -262,6 +269,12 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
 
     if (!isAnonymous && !selectedCustomerId) {
       alert('Selecione um cliente cadastrado ou clique em "Cliente Avulso".');
+      return;
+    }
+
+    if (isAnonymous && paymentOption !== 'paid_full') {
+      alert('Fiado só está disponível para clientes cadastrados, pois não é possível cobrar depois de um cliente avulso.');
+      setPaymentOption('paid_full');
       return;
     }
 
@@ -498,10 +511,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
           <button
             id="btn-client-anonymous"
             type="button"
-            onClick={() => {
-              setIsAnonymous(true);
-              setSelectedCustomerId('');
-            }}
+            onClick={handleSelectAnonymous}
             className={`p-3 rounded-xl border text-left flex items-center gap-2.5 transition active:scale-95 ${
               isAnonymous
                 ? 'border-amber-600 bg-amber-50 text-amber-950 font-bold ring-2 ring-amber-500/20'
@@ -776,31 +786,48 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
           <button
             id="btn-pay-pending-full"
             type="button"
-            onClick={() => setPaymentOption('pending_full')}
-            className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 active:scale-95 ${
-              paymentOption === 'pending_full'
-                ? 'border-amber-600 bg-amber-50 text-amber-950 font-bold ring-2 ring-amber-500/20'
-                : 'border-neutral-200 bg-neutral-50/60 text-neutral-700 hover:bg-neutral-100'
+            disabled={isAnonymous}
+            onClick={() => {
+              if (!isAnonymous) setPaymentOption('pending_full');
+            }}
+            className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 ${
+              isAnonymous
+                ? 'border-neutral-200 bg-neutral-100 text-neutral-400 opacity-60 cursor-not-allowed'
+                : paymentOption === 'pending_full'
+                ? 'border-amber-600 bg-amber-50 text-amber-950 font-bold ring-2 ring-amber-500/20 active:scale-95'
+                : 'border-neutral-200 bg-neutral-50/60 text-neutral-700 hover:bg-neutral-100 active:scale-95'
             }`}
           >
-            <Clock className="w-4 h-4 text-amber-600" />
+            <Clock className={`w-4 h-4 ${isAnonymous ? 'text-neutral-400' : 'text-amber-600'}`} />
             <span className="text-xs font-bold leading-tight">Ficou Fiado</span>
           </button>
 
           <button
             id="btn-pay-partial"
             type="button"
-            onClick={() => setPaymentOption('partial')}
-            className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 active:scale-95 ${
-              paymentOption === 'partial'
-                ? 'border-amber-600 bg-amber-50 text-amber-950 font-bold ring-2 ring-amber-500/20'
-                : 'border-neutral-200 bg-neutral-50/60 text-neutral-700 hover:bg-neutral-100'
+            disabled={isAnonymous}
+            onClick={() => {
+              if (!isAnonymous) setPaymentOption('partial');
+            }}
+            className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 ${
+              isAnonymous
+                ? 'border-neutral-200 bg-neutral-100 text-neutral-400 opacity-60 cursor-not-allowed'
+                : paymentOption === 'partial'
+                ? 'border-amber-600 bg-amber-50 text-amber-950 font-bold ring-2 ring-amber-500/20 active:scale-95'
+                : 'border-neutral-200 bg-neutral-50/60 text-neutral-700 hover:bg-neutral-100 active:scale-95'
             }`}
           >
-            <Coins className="w-4 h-4 text-amber-600" />
+            <Coins className={`w-4 h-4 ${isAnonymous ? 'text-neutral-400' : 'text-amber-600'}`} />
             <span className="text-xs font-bold leading-tight">Pagou Parte</span>
           </button>
         </div>
+
+        {/* Aviso quando cliente avulso estiver selecionado */}
+        {isAnonymous && (
+          <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200/80 p-2.5 rounded-xl leading-relaxed">
+            Fiado só está disponível para clientes cadastrados, pois não é possível cobrar depois de um cliente avulso.
+          </p>
+        )}
 
         {/* If Paid on the spot or partial -> choose payment method */}
         {paymentOption !== 'pending_full' && (
