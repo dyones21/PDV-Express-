@@ -13,6 +13,8 @@ import {
   serverTimestamp,
   SnapshotMetadata,
   writeBatch,
+  deleteDoc,
+  where,
 } from 'firebase/firestore';
 import { db, DEFAULT_BUSINESS_ID, ensureAuthSession } from './firebase';
 import { Customer, Product, Sale, Payment, Seller, Business } from '@/types';
@@ -363,6 +365,57 @@ export async function clearBusinessTestData(businessId = DEFAULT_BUSINESS_ID): P
       await batch.commit();
     }
   }
+}
+
+/**
+ * Exclui definitivamente um negócio e todos os seus dados:
+ * a. Localiza e apaga todos os documentos de userBusinessMap vinculados ao businessId
+ * b. Apaga todos os documentos das subcoleções: sellers, products, customers, sales, payments (em lotes de 400)
+ * c. Apaga o documento businesses/{businessId} em si
+ */
+export async function deleteBusinessCompletely(businessId: string): Promise<void> {
+  if (!businessId) throw new Error('ID do negócio é obrigatório.');
+  await ensureAuthSession();
+
+  // a. Apagar documentos vinculados na coleção userBusinessMap
+  const mapCol = collection(db, 'userBusinessMap');
+  const mapQuery = query(mapCol, where('businessId', '==', businessId));
+  const mapSnap = await getDocs(mapQuery);
+  if (!mapSnap.empty) {
+    const mapBatch = writeBatch(db);
+    for (const d of mapSnap.docs) {
+      mapBatch.delete(d.ref);
+    }
+    await mapBatch.commit();
+  }
+
+  // b. Apagar todos os documentos das subcoleções: sellers, products, customers, sales, payments
+  const collectionsToClear = [
+    getSellersCol(businessId),
+    getProductsCol(businessId),
+    getCustomersCol(businessId),
+    getSalesCol(businessId),
+    getPaymentsCol(businessId),
+  ];
+
+  for (const colRef of collectionsToClear) {
+    const snap = await getDocs(colRef);
+    if (snap.empty) continue;
+
+    const docs = snap.docs;
+    for (let i = 0; i < docs.length; i += 400) {
+      const chunk = docs.slice(i, i + 400);
+      const batch = writeBatch(db);
+      for (const d of chunk) {
+        batch.delete(d.ref);
+      }
+      await batch.commit();
+    }
+  }
+
+  // c. Apagar o documento businesses/{businessId} em si
+  const bRef = getBusinessRef(businessId);
+  await deleteDoc(bRef);
 }
 
 // ----------------- CUSTOMERS -----------------

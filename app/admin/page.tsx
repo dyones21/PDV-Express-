@@ -18,8 +18,13 @@ import {
   Mail, 
   ArrowRight, 
   Search,
-  Check
+  Check,
+  Pencil,
+  Trash2,
+  X,
+  AlertTriangle
 } from 'lucide-react';
+import { deleteBusinessCompletely } from '@/lib/db';
 
 export default function AdminPage() {
   const [currentUser, setCurrentUser] = useState<User | null | undefined>(undefined);
@@ -29,6 +34,18 @@ export default function AdminPage() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Estados para edição de nome
+  const [editingBusiness, setEditingBusiness] = useState<Business | null>(null);
+  const [newBusinessName, setNewBusinessName] = useState('');
+  const [isSavingName, setIsSavingName] = useState(false);
+  const [editNameError, setEditNameError] = useState<string | null>(null);
+
+  // Estados para exclusão permanente
+  const [businessToDelete, setBusinessToDelete] = useState<Business | null>(null);
+  const [confirmDeleteInput, setConfirmDeleteInput] = useState('');
+  const [isDeletingBusiness, setIsDeletingBusiness] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Login form states
   const [email, setEmail] = useState('');
@@ -131,6 +148,77 @@ export default function AdminPage() {
       alert('Falha ao atualizar o status. Verifique se você tem permissões de administrador.');
     } finally {
       setTogglingId(null);
+    }
+  };
+
+  // 1) EDITAR NOME DO NEGÓCIO
+  const handleOpenEditName = (business: Business) => {
+    setEditingBusiness(business);
+    setNewBusinessName(business.name);
+    setEditNameError(null);
+  };
+
+  const handleSaveBusinessName = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBusiness) return;
+    const trimmed = newBusinessName.trim();
+    if (!trimmed) {
+      setEditNameError('O nome do negócio não pode ficar em branco.');
+      return;
+    }
+
+    setIsSavingName(true);
+    setEditNameError(null);
+    try {
+      const bRef = doc(db, 'businesses', editingBusiness.id);
+      await updateDoc(bRef, { name: trimmed });
+
+      setBusinesses((prev) =>
+        prev.map((b) => (b.id === editingBusiness.id ? { ...b, name: trimmed } : b))
+      );
+
+      setActionSuccessMessage(`Nome do negócio atualizado para "${trimmed}" com sucesso.`);
+      setTimeout(() => setActionSuccessMessage(null), 4000);
+      setEditingBusiness(null);
+    } catch (err: unknown) {
+      console.error('Erro ao atualizar nome do negócio:', err);
+      setEditNameError('Falha ao atualizar o nome. Verifique suas permissões de administrador.');
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
+  // 2) EXCLUIR CONTA DE UM NEGÓCIO (PERMANENTE)
+  const handleOpenDelete = (business: Business) => {
+    setBusinessToDelete(business);
+    setConfirmDeleteInput('');
+    setDeleteError(null);
+  };
+
+  const isDeleteConfirmed =
+    Boolean(businessToDelete) &&
+    confirmDeleteInput.trim() === businessToDelete?.name.trim();
+
+  const handleConfirmDeleteBusiness = async () => {
+    if (!businessToDelete || !isDeleteConfirmed || isDeletingBusiness) return;
+    setIsDeletingBusiness(true);
+    setDeleteError(null);
+
+    try {
+      await deleteBusinessCompletely(businessToDelete.id);
+
+      setBusinesses((prev) => prev.filter((b) => b.id !== businessToDelete.id));
+      setActionSuccessMessage(
+        `A conta do negócio "${businessToDelete.name}" e todos os seus dados foram excluídos com sucesso.`
+      );
+      setTimeout(() => setActionSuccessMessage(null), 5000);
+      setBusinessToDelete(null);
+    } catch (err: unknown) {
+      console.error('Erro ao excluir negócio definitivamente:', err);
+      const msg = (err as { message?: string })?.message || 'Falha na exclusão do negócio.';
+      setDeleteError(`Erro ao excluir: ${msg}`);
+    } finally {
+      setIsDeletingBusiness(false);
     }
   };
 
@@ -398,7 +486,7 @@ export default function AdminPage() {
                     <th className="py-3 px-4">E-mail do Responsável</th>
                     <th className="py-3 px-4">Data de Cadastro</th>
                     <th className="py-3 px-4 text-center">Status</th>
-                    <th className="py-3 px-4 text-right">Ação</th>
+                    <th className="py-3 px-4 text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-800/60">
@@ -445,24 +533,53 @@ export default function AdminPage() {
                           )}
                         </td>
                         <td className="py-3.5 px-4 text-right">
-                          <button
-                            type="button"
-                            id={`btn-toggle-status-${b.id}`}
-                            onClick={() => handleToggleStatus(b)}
-                            disabled={isToggling}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
-                              isActive
-                                ? 'bg-red-950/40 hover:bg-red-900/60 text-red-300 border-red-800/60'
-                                : 'bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border-emerald-800/60'
-                            } disabled:opacity-50`}
-                          >
-                            {isToggling ? (
-                              <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                            ) : (
-                              <Power className="w-3.5 h-3.5" />
-                            )}
-                            <span>{isActive ? 'Desativar' : 'Ativar'}</span>
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            {/* 1) Editar Nome */}
+                            <button
+                              type="button"
+                              id={`btn-edit-name-${b.id}`}
+                              onClick={() => handleOpenEditName(b)}
+                              title="Editar nome do negócio"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition border bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border-neutral-700"
+                            >
+                              <Pencil className="w-3.5 h-3.5 text-neutral-400" />
+                              <span>Editar Nome</span>
+                            </button>
+
+                            {/* Ativar / Desativar */}
+                            <button
+                              type="button"
+                              id={`btn-toggle-status-${b.id}`}
+                              onClick={() => handleToggleStatus(b)}
+                              disabled={isToggling}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition border ${
+                                isActive
+                                  ? 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border-amber-800/60'
+                                  : 'bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border-emerald-800/60'
+                              } disabled:opacity-50`}
+                            >
+                              {isToggling ? (
+                                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              ) : (
+                                <Power className="w-3.5 h-3.5" />
+                              )}
+                              <span>{isActive ? 'Desativar' : 'Ativar'}</span>
+                            </button>
+
+                            <span className="w-px h-4 bg-neutral-800" />
+
+                            {/* 2) Excluir Conta (Permanente) */}
+                            <button
+                              type="button"
+                              id={`btn-delete-business-${b.id}`}
+                              onClick={() => handleOpenDelete(b)}
+                              title="Excluir conta permanentemente"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition border bg-red-950/40 hover:bg-red-900/70 text-red-300 border-red-800/70"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                              <span>Excluir Conta</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -485,7 +602,7 @@ export default function AdminPage() {
                   : 'Data não informada';
 
                 return (
-                  <div key={b.id} className="p-4 space-y-2.5">
+                  <div key={b.id} className="p-4 space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="font-bold text-white text-sm">{b.name}</div>
@@ -519,24 +636,47 @@ export default function AdminPage() {
                       </div>
                     </div>
 
-                    <div className="pt-1 flex justify-end">
+                    {/* Botões de Ação Mobile */}
+                    <div className="pt-2 border-t border-neutral-800/60 flex flex-col gap-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          id={`btn-mobile-edit-name-${b.id}`}
+                          onClick={() => handleOpenEditName(b)}
+                          className="min-h-[38px] flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition border bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border-neutral-700"
+                        >
+                          <Pencil className="w-3.5 h-3.5 text-neutral-400" />
+                          <span>Editar Nome</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          id={`btn-mobile-toggle-${b.id}`}
+                          onClick={() => handleToggleStatus(b)}
+                          disabled={isToggling}
+                          className={`min-h-[38px] flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
+                            isActive
+                              ? 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border-amber-800/60'
+                              : 'bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border-emerald-800/60'
+                          } disabled:opacity-50`}
+                        >
+                          {isToggling ? (
+                            <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          ) : (
+                            <Power className="w-3.5 h-3.5" />
+                          )}
+                          <span>{isActive ? 'Desativar' : 'Ativar'}</span>
+                        </button>
+                      </div>
+
                       <button
                         type="button"
-                        id={`btn-mobile-toggle-${b.id}`}
-                        onClick={() => handleToggleStatus(b)}
-                        disabled={isToggling}
-                        className={`w-full min-h-[38px] flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
-                          isActive
-                            ? 'bg-red-950/40 hover:bg-red-900/60 text-red-300 border-red-800/60'
-                            : 'bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border-emerald-800/60'
-                        } disabled:opacity-50`}
+                        id={`btn-mobile-delete-${b.id}`}
+                        onClick={() => handleOpenDelete(b)}
+                        className="w-full min-h-[38px] flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition border bg-red-950/40 hover:bg-red-900/70 text-red-300 border-red-800/70"
                       >
-                        {isToggling ? (
-                          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        ) : (
-                          <Power className="w-3.5 h-3.5" />
-                        )}
-                        <span>{isActive ? 'Suspender Negócio (Desativar)' : 'Reativar Negócio (Ativar)'}</span>
+                        <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                        <span>Excluir Conta do Negócio</span>
                       </button>
                     </div>
                   </div>
@@ -546,6 +686,192 @@ export default function AdminPage() {
           </div>
         )}
       </main>
+
+      {/* Modal: Editar Nome do Negócio */}
+      {editingBusiness && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border border-neutral-800 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-neutral-850 px-5 py-4 border-b border-neutral-800 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-white">
+                <Pencil className="w-4 h-4 text-amber-400" />
+                <h3 className="text-sm font-bold">Editar Nome do Negócio</h3>
+              </div>
+              <button
+                type="button"
+                id="btn-close-edit-name"
+                onClick={() => setEditingBusiness(null)}
+                disabled={isSavingName}
+                className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveBusinessName} className="p-5 space-y-4">
+              {editNameError && (
+                <div className="p-2.5 bg-red-950/60 border border-red-800/80 rounded-xl text-red-200 text-xs font-semibold flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                  <span>{editNameError}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-300 mb-1" htmlFor="input-edit-business-name">
+                  Novo Nome do Negócio
+                </label>
+                <input
+                  id="input-edit-business-name"
+                  type="text"
+                  required
+                  value={newBusinessName}
+                  onChange={(e) => setNewBusinessName(e.target.value)}
+                  placeholder="Nome do negócio"
+                  disabled={isSavingName}
+                  className="w-full px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium"
+                />
+                <p className="text-[11px] text-neutral-500 mt-1 font-mono">
+                  ID: {editingBusiness.id}
+                </p>
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  id="btn-cancel-edit-name"
+                  onClick={() => setEditingBusiness(null)}
+                  disabled={isSavingName}
+                  className="flex-1 py-2.5 rounded-xl border border-neutral-700 hover:bg-neutral-800 text-neutral-300 text-xs font-bold transition disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  id="btn-confirm-save-name"
+                  disabled={isSavingName || !newBusinessName.trim()}
+                  className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white text-xs font-bold shadow transition disabled:opacity-50 flex items-center justify-center gap-1.5"
+                >
+                  {isSavingName ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Salvando...</span>
+                    </>
+                  ) : (
+                    <span>Salvar Nome</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Excluir Conta do Negócio (Permanente) */}
+      {businessToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border border-red-900/60 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="bg-red-950/70 border-b border-red-900/50 px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-red-300">
+                <AlertTriangle className="w-5 h-5 text-red-400" />
+                <h3 className="text-sm font-bold">Excluir Conta do Negócio</h3>
+              </div>
+              <button
+                type="button"
+                id="btn-close-delete-modal"
+                onClick={() => {
+                  if (!isDeletingBusiness) setBusinessToDelete(null);
+                }}
+                disabled={isDeletingBusiness}
+                className="p-1 rounded-lg text-red-400 hover:text-white hover:bg-red-900/60 transition disabled:opacity-50"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {deleteError && (
+                <div className="p-3 bg-red-950/80 border border-red-800 rounded-xl text-red-200 text-xs font-semibold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                  <span>{deleteError}</span>
+                </div>
+              )}
+
+              {/* Informações da Conta */}
+              <div className="bg-neutral-950 p-3.5 rounded-xl border border-neutral-800 space-y-1.5 text-xs">
+                <div>
+                  <span className="text-neutral-500 font-medium">Nome do Negócio: </span>
+                  <strong className="text-white font-bold text-sm">{businessToDelete.name}</strong>
+                </div>
+                <div>
+                  <span className="text-neutral-500 font-medium">E-mail do Dono: </span>
+                  <span className="font-mono text-neutral-300">{businessToDelete.ownerEmail || 'Não informado'}</span>
+                </div>
+                <div>
+                  <span className="text-neutral-500 font-medium">ID da Empresa: </span>
+                  <span className="font-mono text-neutral-400 text-[11px]">{businessToDelete.id}</span>
+                </div>
+              </div>
+
+              {/* Alerta de Perigo Irreversível */}
+              <div className="p-3.5 bg-red-950/50 border border-red-800/80 rounded-xl text-xs text-red-200 leading-relaxed">
+                <strong className="block text-red-300 font-bold mb-1">Ação Irreversível:</strong>
+                Isso vai apagar PERMANENTEMENTE todos os produtos, clientes, vendas, pagamentos e vendedores deste negócio, além do acesso dele ao sistema. Essa ação não pode ser desfeita.
+              </div>
+
+              {/* Campo de confirmação com nome exato */}
+              <div>
+                <label className="block text-xs font-semibold text-neutral-300 mb-1" htmlFor="input-confirm-delete-business">
+                  Para confirmar, digite exatamente <strong className="text-amber-300 select-all font-mono">&quot;{businessToDelete.name}&quot;</strong> abaixo:
+                </label>
+                <input
+                  id="input-confirm-delete-business"
+                  type="text"
+                  value={confirmDeleteInput}
+                  onChange={(e) => setConfirmDeleteInput(e.target.value)}
+                  placeholder={`Digite "${businessToDelete.name}"`}
+                  disabled={isDeletingBusiness}
+                  className="w-full px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl text-xs text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-red-500 font-medium disabled:opacity-50"
+                  autoComplete="off"
+                />
+              </div>
+
+              {/* Aviso sobre autenticação */}
+              <p className="text-[11px] text-neutral-400 bg-neutral-950/60 p-2.5 rounded-lg border border-neutral-800/70">
+                ⚠️ <strong className="text-neutral-300">Aviso:</strong> O e-mail de login não será liberado para reuso automaticamente.
+              </p>
+
+              {/* Botões de Ação */}
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  id="btn-cancel-delete-business"
+                  onClick={() => setBusinessToDelete(null)}
+                  disabled={isDeletingBusiness}
+                  className="flex-1 py-2.5 rounded-xl border border-neutral-700 hover:bg-neutral-800 text-neutral-300 text-xs font-bold transition disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  id="btn-confirm-delete-business"
+                  onClick={handleConfirmDeleteBusiness}
+                  disabled={!isDeleteConfirmed || isDeletingBusiness}
+                  className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold shadow transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                >
+                  {isDeletingBusiness ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Excluindo...</span>
+                    </>
+                  ) : (
+                    <span>Excluir Definitivamente</span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
