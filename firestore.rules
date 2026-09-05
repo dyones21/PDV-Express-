@@ -12,12 +12,9 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Identifica Administrador da Plataforma (email do gestor ou registrado na coleção platformAdmins)
+    // Identifica Administrador da Plataforma (registrado na coleção platformAdmins)
     function isPlatformAdmin() {
-      return isAuthenticated() && (
-        (request.auth.token.email != null && request.auth.token.email.lower() == 'dyones21@gmail.com') ||
-        exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid))
-      );
+      return isAuthenticated() && exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid));
     }
 
     // Verifica se o usuário autenticado possui registro de negócio associado
@@ -92,12 +89,8 @@ service cloud.firestore {
         request.resource.data.active == resource.data.active
       );
 
-      // Exclusão permitida para administradores da plataforma ou pelo dono da conta recém-criada
-      allow delete: if isAuthenticated() && (
-        isPlatformAdmin() || 
-        (resource.data.ownerUid != null && resource.data.ownerUid == request.auth.uid) ||
-        isOwnerOfBusiness(businessId)
-      );
+      // Exclusão permitida SOMENTE para administradores da plataforma
+      allow delete: if isPlatformAdmin();
 
       // 5.1 Subcoleção: sellers (Vendedores com PIN de segurança)
       match /sellers/{sellerId} {
