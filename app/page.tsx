@@ -34,7 +34,7 @@ import {
   DEFAULT_BUSINESS_ID as FALLBACK_BUSINESS_ID 
 } from '@/lib/firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
-import { AlertCircle, RefreshCw, LogOut } from 'lucide-react';
+import { AlertCircle, RefreshCw, LogOut, MessageCircle } from 'lucide-react';
 
 function MainAppContent() {
   const { businessId } = useBusiness();
@@ -317,8 +317,19 @@ export default function HomePage() {
           </div>
           <h2 className="text-lg font-bold text-neutral-900">Acesso Aguardando Liberação</h2>
           <p className="text-sm text-neutral-700 mt-2">
-            Sua conta está cadastrada, mas ainda não foi liberada pelo administrador. A ativação é feita exclusivamente através da página do administrador.
+            Seu acesso está temporariamente indisponível. Entre em contato com o suporte para verificar a liberação.
           </p>
+
+          <a
+            href="https://wa.me/5522988542784?text=Ol%C3%A1%2C%20preciso%20de%20ajuda%20com%20o%20acesso%20do%20meu%20neg%C3%B3cio%20no%20PDV%20Express."
+            target="_blank"
+            rel="noopener noreferrer"
+            id="btn-whatsapp-support-unlinked"
+            className="mt-4 w-full min-h-[44px] px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm"
+          >
+            <MessageCircle className="w-4 h-4" />
+            <span>Falar no WhatsApp</span>
+          </a>
 
           <div className="mt-4 p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-xs text-neutral-600 break-all text-left">
             <div><strong className="text-neutral-800">Conta:</strong> {currentUser.email}</div>
@@ -377,8 +388,19 @@ export default function HomePage() {
           </div>
           <h2 className="text-lg font-bold text-neutral-900">Acesso Aguardando Liberação</h2>
           <p className="text-sm text-neutral-700 mt-2">
-            O cadastro do seu negócio foi realizado com sucesso. A liberação de acesso é efetuada exclusivamente pelo administrador na página de administração.
+            Seu acesso está temporariamente indisponível. Entre em contato com o suporte para verificar a liberação.
           </p>
+
+          <a
+            href="https://wa.me/5522988542784?text=Ol%C3%A1%2C%20preciso%20de%20ajuda%20com%20o%20acesso%20do%20meu%20neg%C3%B3cio%20no%20PDV%20Express."
+            target="_blank"
+            rel="noopener noreferrer"
+            id="btn-whatsapp-support-inactive"
+            className="mt-4 w-full min-h-[44px] px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm"
+          >
+            <MessageCircle className="w-4 h-4" />
+            <span>Falar no WhatsApp</span>
+          </a>
 
           <div className="mt-4 p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-xs text-neutral-600 break-all text-left">
             <div><strong className="text-neutral-800">Negócio:</strong> {businessName}</div>
