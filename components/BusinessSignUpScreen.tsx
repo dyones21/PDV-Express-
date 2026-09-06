@@ -98,14 +98,14 @@ export function BusinessSignUpScreen({
         updatedAt: new Date().toISOString(),
       });
 
-      // 4.2 businesses/{newBusinessId} - ATIVO por padrão para o usuário usar imediatamente
+      // 4.2 businesses/{newBusinessId}
       batch.set(doc(db, 'businesses', newBusinessId), {
         id: newBusinessId,
         name: cleanBusinessName,
         ownerEmail: normalizedEmail,
         ownerUid: uid,
         createdAt: new Date().toISOString(),
-        active: true,
+        active: false,
       });
 
       // 4.3 Vendedor inicial (dono)
