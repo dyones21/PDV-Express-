@@ -12,12 +12,9 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Identifica Administrador da Plataforma (registrado na coleção platformAdmins ou e-mail mestre da plataforma)
+    // Identifica Administrador da Plataforma (registrado na coleção platformAdmins)
     function isPlatformAdmin() {
-      return isAuthenticated() && (
-        exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid)) ||
-        (request.auth.token.email != null && request.auth.token.email.lower() == 'dyones21@gmail.com')
-      );
+      return isAuthenticated() && exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid));
     }
 
     // Verifica se o usuário autenticado possui registro de negócio associado
