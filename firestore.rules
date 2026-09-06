@@ -82,10 +82,11 @@ service cloud.firestore {
         (request.resource.data.ownerEmail != null && request.auth.token.email != null && request.resource.data.ownerEmail.lower() == request.auth.token.email.lower())
       );
 
-      // Atualização: Admin ou dono do negócio
-      allow update: if isPlatformAdmin() || 
-        isOwnerOfBusiness(businessId) || 
-        (isAuthenticated() && resource.data.ownerUid == request.auth.uid);
+      // Atualização: Admin ou dono do negócio (dono não pode alterar o status active)
+      allow update: if isPlatformAdmin() || (
+        (isOwnerOfBusiness(businessId) || (isAuthenticated() && resource.data.ownerUid == request.auth.uid)) &&
+        request.resource.data.active == resource.data.active
+      );
 
       // Exclusão: Restrito exclusivamente a Administradores da plataforma
       allow delete: if isPlatformAdmin();
