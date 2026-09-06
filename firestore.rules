@@ -49,10 +49,11 @@ service cloud.firestore {
       // O próprio usuário ou o administrador podem ler o mapeamento
       allow read: if isAuthenticated() && (request.auth.uid == uid || isPlatformAdmin());
 
-      // O próprio usuário pode criar seu mapeamento inicial
+      // O próprio usuário pode criar seu mapeamento inicial, impedindo vinculação a negócio pré-existente
       allow create: if isAuthenticated() && request.auth.uid == uid &&
         request.resource.data.businessId is string &&
-        request.resource.data.businessId.size() > 0;
+        request.resource.data.businessId.size() > 0 &&
+        !exists(/databases/$(database)/documents/businesses/$(request.resource.data.businessId));
 
       // O usuário pode atualizar o nome do negócio ou metadados,
       // mas é terminantemente proibido de alterar o businessId para outro ID
