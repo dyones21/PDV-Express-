@@ -10,11 +10,13 @@ import { ShoppingBag, Lock, Mail, Building2, Eye, EyeOff, AlertCircle, ArrowRigh
 interface BusinessSignUpScreenProps {
   onNavigateToLogin?: () => void;
   onSignUpSuccess?: () => void;
+  onSignUpStart?: () => void;
 }
 
 export function BusinessSignUpScreen({
   onNavigateToLogin,
   onSignUpSuccess,
+  onSignUpStart,
 }: BusinessSignUpScreenProps) {
   const [businessName, setBusinessName] = useState('');
   const [ownerName, setOwnerName] = useState('');
@@ -68,6 +70,7 @@ export function BusinessSignUpScreen({
       return;
     }
 
+    onSignUpStart?.();
     setIsLoading(true);
     let createdUser: FirebaseUser | null = null;
     let newBusinessId: string | null = null;

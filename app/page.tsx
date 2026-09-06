@@ -216,6 +216,7 @@ export default function HomePage() {
   const [isResolving, setIsResolving] = useState<boolean>(false);
   const [isAutoLinking, setIsAutoLinking] = useState<boolean>(false);
   const [authView, setAuthView] = useState<'login' | 'signup'>('login');
+  const [isSigningUp, setIsSigningUp] = useState(false);
 
   useEffect(() => {
     let hasResolved = false;
@@ -271,7 +272,7 @@ export default function HomePage() {
   }, []);
 
   // 1. Verificando autenticação do dispositivo no Firebase Auth
-  if (currentUser === undefined || (currentUser && isResolving)) {
+  if (currentUser === undefined || (currentUser && isResolving && !isSigningUp)) {
     return (
       <div className="min-h-screen bg-amber-50/60 flex flex-col items-center justify-center p-4 select-none">
         <div className="flex flex-col items-center gap-3">
@@ -283,12 +284,14 @@ export default function HomePage() {
   }
 
   // 2. Aparelho sem login real -> Exibir tela de login ou criação de negócio
-  if (!currentUser) {
+  if (!currentUser || isSigningUp) {
     if (authView === 'signup') {
       return (
         <BusinessSignUpScreen
           onNavigateToLogin={() => setAuthView('login')}
+          onSignUpStart={() => setIsSigningUp(true)}
           onSignUpSuccess={() => {
+            setIsSigningUp(false);
             setIsResolving(true);
           }}
         />
