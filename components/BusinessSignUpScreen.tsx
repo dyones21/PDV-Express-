@@ -2,14 +2,14 @@
 
 import React, { useState } from 'react';
 import { createUserWithEmailAndPassword, User as FirebaseUser } from 'firebase/auth';
-import { collection, doc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { collection, doc, deleteDoc, writeBatch, setDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { hashPin, generateSalt } from '@/lib/security';
 import { ShoppingBag, Lock, Mail, Building2, Eye, EyeOff, AlertCircle, ArrowRight, Sparkles, User, KeyRound } from 'lucide-react';
 
 interface BusinessSignUpScreenProps {
   onNavigateToLogin?: () => void;
-  onSignUpSuccess?: () => void;
+  onSignUpSuccess?: (businessId?: string) => void;
   onSignUpStart?: () => void;
 }
 
@@ -80,6 +80,7 @@ export function BusinessSignUpScreen({
       const cred = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
       createdUser = cred.user;
       const uid = cred.user.uid;
+      await cred.user.getIdToken(true); // força o token de autenticação a estar pronto antes de gravar no Firestore
 
       // 2. Gera um novo businessId único do Firestore
       newBusinessId = doc(collection(db, 'businesses')).id;
@@ -90,19 +91,20 @@ export function BusinessSignUpScreen({
       const hash = await hashPin(cleanPin, salt);
       const sellerRef = doc(collection(db, 'businesses', newBusinessId, 'sellers'));
 
-      // 4. Grava tudo em batch atômico no Firestore (garante que tudo é criado junto sem inconsistência ou atraso)
-      const batch = writeBatch(db);
+      // 4. Grava em duas etapas no banco padrão (default) do Firestore para respeitar as regras de segurança:
+      // 4.1 Primeiro, grava o mapeamento do usuário e o cadastro da empresa
+      const businessBatch = writeBatch(db);
 
-      // 4.1 userBusinessMap/{uid}
-      batch.set(doc(db, 'userBusinessMap', uid), {
+      // userBusinessMap/{uid}
+      businessBatch.set(doc(db, 'userBusinessMap', uid), {
         businessId: newBusinessId,
         businessName: cleanBusinessName,
         role: 'owner',
         updatedAt: new Date().toISOString(),
       });
 
-      // 4.2 businesses/{newBusinessId}
-      batch.set(doc(db, 'businesses', newBusinessId), {
+      // businesses/{newBusinessId}
+      businessBatch.set(doc(db, 'businesses', newBusinessId), {
         id: newBusinessId,
         name: cleanBusinessName,
         ownerEmail: normalizedEmail,
@@ -111,8 +113,11 @@ export function BusinessSignUpScreen({
         active: false,
       });
 
-      // 4.3 Vendedor inicial (dono)
-      batch.set(sellerRef, {
+      await businessBatch.commit();
+
+      // 4.2 Com a empresa e o mapeamento persistidos no banco padrão (default),
+      // grava o vendedor inicial (dono), passando com sucesso nas regras de isOwnerOfBusiness
+      await setDoc(sellerRef, {
         name: cleanOwnerName.trim(),
         role: 'owner',
         pinHash: hash,
@@ -121,11 +126,8 @@ export function BusinessSignUpScreen({
         createdAt: new Date().toISOString(),
       });
 
-      // Efetiva a gravação no Firestore
-      await batch.commit();
-
       if (onSignUpSuccess) {
-        onSignUpSuccess();
+        onSignUpSuccess(newBusinessId);
       }
     } catch (err: unknown) {
       // Se a gravação no Firestore falhar após criar o usuário no Auth, fazemos rollback limpo

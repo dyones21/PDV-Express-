@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Customer, Product, Sale, Payment, Seller } from '@/types';
 import { 
   subscribeCustomers, 
@@ -28,16 +28,13 @@ import { BusinessSignUpScreen } from '@/components/BusinessSignUpScreen';
 import { BusinessProvider, useBusiness } from '@/context/BusinessContext';
 import { 
   auth, 
-  db,
   resolveBusinessId, 
   resolveUserBusiness, 
   getBusinessActiveStatus,
   DEFAULT_BUSINESS_ID as FALLBACK_BUSINESS_ID 
 } from '@/lib/firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
-import { doc, collection, writeBatch } from 'firebase/firestore';
-import { generateSalt, hashPin } from '@/lib/security';
-import { AlertCircle, RefreshCw, LogOut, Building2 } from 'lucide-react';
+import { AlertCircle, RefreshCw, LogOut } from 'lucide-react';
 
 function MainAppContent() {
   const { businessId } = useBusiness();
@@ -214,9 +211,38 @@ export default function HomePage() {
   const [businessName, setBusinessName] = useState<string>('Meu Negócio');
   const [isBusinessActive, setIsBusinessActive] = useState<boolean>(true);
   const [isResolving, setIsResolving] = useState<boolean>(false);
-  const [isAutoLinking, setIsAutoLinking] = useState<boolean>(false);
   const [authView, setAuthView] = useState<'login' | 'signup'>('login');
   const [isSigningUp, setIsSigningUp] = useState(false);
+
+  const resolveForUser = useCallback(async (user: User, forcedBusinessId?: string) => {
+    setIsResolving(true);
+    try {
+      let bId = forcedBusinessId || (await resolveBusinessId(user.uid));
+      // Se o usuário acabou de se cadastrar, aguarda breves instantes para a gravação sincronizar
+      if (!bId) {
+        for (let i = 0; i < 5; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          bId = await resolveBusinessId(user.uid);
+          if (bId) break;
+        }
+      }
+
+      if (bId) {
+        const bInfo = await resolveUserBusiness(user.uid);
+        const activeStatus = await getBusinessActiveStatus(bId);
+        setIsBusinessActive(activeStatus);
+        setBusinessName(bInfo?.businessName || 'Meu Negócio');
+        setResolvedBusinessId(bId);
+      } else {
+        setResolvedBusinessId(null);
+      }
+    } catch (err) {
+      console.warn('Erro ao resolver negócio inicial:', err);
+      setResolvedBusinessId(null);
+    } finally {
+      setIsResolving(false);
+    }
+  }, []);
 
   useEffect(() => {
     let hasResolved = false;
@@ -233,33 +259,7 @@ export default function HomePage() {
       clearTimeout(safetyTimer);
       setCurrentUser(user);
       if (user) {
-        setIsResolving(true);
-        try {
-          let bId = await resolveBusinessId(user.uid);
-          // Se o usuário acabou de se cadastrar, aguarda breves instantes para a gravação sincronizar
-          if (!bId) {
-            for (let i = 0; i < 4; i++) {
-              await new Promise((resolve) => setTimeout(resolve, 600));
-              bId = await resolveBusinessId(user.uid);
-              if (bId) break;
-            }
-          }
-
-          if (bId) {
-            const bInfo = await resolveUserBusiness(user.uid);
-            const activeStatus = await getBusinessActiveStatus(bId);
-            setIsBusinessActive(activeStatus);
-            setBusinessName(bInfo?.businessName || 'Meu Negócio');
-            setResolvedBusinessId(bId);
-          } else {
-            setResolvedBusinessId(null);
-          }
-        } catch (err) {
-          console.warn('Erro ao resolver negócio inicial:', err);
-          setResolvedBusinessId(null);
-        } finally {
-          setIsResolving(false);
-        }
+        await resolveForUser(user);
       } else {
         setResolvedBusinessId(undefined);
       }
@@ -269,7 +269,7 @@ export default function HomePage() {
       clearTimeout(safetyTimer);
       unsubscribe();
     };
-  }, []);
+  }, [resolveForUser]);
 
   // 1. Verificando autenticação do dispositivo no Firebase Auth
   if (currentUser === undefined || (currentUser && isResolving && !isSigningUp)) {
@@ -290,9 +290,12 @@ export default function HomePage() {
         <BusinessSignUpScreen
           onNavigateToLogin={() => setAuthView('login')}
           onSignUpStart={() => setIsSigningUp(true)}
-          onSignUpSuccess={() => {
+          onSignUpSuccess={async (newBId) => {
             setIsSigningUp(false);
-            setIsResolving(true);
+            const user = auth.currentUser;
+            if (user) {
+              await resolveForUser(user, newBId);
+            }
           }}
         />
       );
@@ -304,7 +307,7 @@ export default function HomePage() {
     );
   }
 
-  // 3. Usuário logado, mas sem registro na coleção userBusinessMap
+  // 3. Usuário logado, mas sem registro na coleção userBusinessMap ou aguardando liberação
   if (resolvedBusinessId === null) {
     return (
       <div className="min-h-screen bg-amber-50/60 flex flex-col items-center justify-center p-4 select-none">
@@ -312,9 +315,9 @@ export default function HomePage() {
           <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3 text-amber-800">
             <AlertCircle className="w-6 h-6 text-amber-700" />
           </div>
-          <h2 className="text-lg font-bold text-neutral-900">Acesso Não Vinculado</h2>
+          <h2 className="text-lg font-bold text-neutral-900">Acesso Aguardando Liberação</h2>
           <p className="text-sm text-neutral-700 mt-2">
-            Sua conta de e-mail ainda não possui uma empresa associada no sistema.
+            Sua conta está cadastrada, mas ainda não foi liberada pelo administrador. A ativação é feita exclusivamente através da página do administrador.
           </p>
 
           <div className="mt-4 p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-xs text-neutral-600 break-all text-left">
@@ -323,61 +326,6 @@ export default function HomePage() {
           </div>
 
           <div className="mt-5 flex flex-col gap-2.5">
-            <button
-              type="button"
-              id="btn-auto-initialize-business"
-              disabled={isAutoLinking}
-              onClick={async () => {
-                setIsAutoLinking(true);
-                try {
-                  const newBId = doc(collection(db, 'businesses')).id;
-                  const cleanEmail = currentUser.email || 'empresa@pdv.com';
-                  const baseName = cleanEmail.split('@')[0] || 'Meu Negócio';
-                  const cleanName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
-                  const salt = generateSalt();
-                  const hash = await hashPin('1234', salt);
-                  const sellerRef = doc(collection(db, 'businesses', newBId, 'sellers'));
-
-                  const batch = writeBatch(db);
-                  batch.set(doc(db, 'userBusinessMap', currentUser.uid), {
-                    businessId: newBId,
-                    businessName: cleanName,
-                    role: 'owner',
-                    updatedAt: new Date().toISOString(),
-                  });
-                  batch.set(doc(db, 'businesses', newBId), {
-                    id: newBId,
-                    name: cleanName,
-                    ownerEmail: cleanEmail,
-                    ownerUid: currentUser.uid,
-                    createdAt: new Date().toISOString(),
-                    active: true,
-                  });
-                  batch.set(sellerRef, {
-                    name: cleanName,
-                    role: 'owner',
-                    pinHash: hash,
-                    pinSalt: salt,
-                    active: true,
-                    createdAt: new Date().toISOString(),
-                  });
-                  await batch.commit();
-
-                  setBusinessName(cleanName);
-                  setIsBusinessActive(true);
-                  setResolvedBusinessId(newBId);
-                } catch (err) {
-                  console.error('Erro ao auto-vincular empresa:', err);
-                } finally {
-                  setIsAutoLinking(false);
-                }
-              }}
-              className="w-full min-h-[44px] px-3 bg-amber-600 hover:bg-amber-700 active:scale-[0.99] text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-60"
-            >
-              <Building2 className="w-4 h-4" />
-              <span>{isAutoLinking ? 'Criando negócio...' : 'Criar e Ativar Meu Negócio Agora'}</span>
-            </button>
-
             <button
               type="button"
               id="btn-retry-resolve-business"
@@ -396,10 +344,10 @@ export default function HomePage() {
                   setIsResolving(false);
                 }
               }}
-              className="w-full min-h-[44px] px-3 border border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100 active:scale-[0.99] font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
+              className="w-full min-h-[44px] px-3 bg-amber-700 hover:bg-amber-800 active:scale-[0.99] text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm"
             >
               <RefreshCw className="w-4 h-4" />
-              <span>Verificar novamente</span>
+              <span>Verificar status novamente</span>
             </button>
 
             <button
@@ -427,14 +375,15 @@ export default function HomePage() {
           <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3 text-amber-800">
             <AlertCircle className="w-6 h-6 text-amber-700" />
           </div>
-          <h2 className="text-lg font-bold text-neutral-900">Acesso ainda não liberado</h2>
+          <h2 className="text-lg font-bold text-neutral-900">Acesso Aguardando Liberação</h2>
           <p className="text-sm text-neutral-700 mt-2">
-            Se você acabou de se cadastrar, aguarde a aprovação. Em caso de dúvida, entre em contato com o suporte.
+            O cadastro do seu negócio foi realizado com sucesso. A liberação de acesso é efetuada exclusivamente pelo administrador na página de administração.
           </p>
 
           <div className="mt-4 p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-xs text-neutral-600 break-all text-left">
             <div><strong className="text-neutral-800">Negócio:</strong> {businessName}</div>
             <div className="mt-1"><strong className="text-neutral-800">ID do Negócio:</strong> {resolvedBusinessId}</div>
+            <div className="mt-1"><strong className="text-neutral-800">Responsável:</strong> {currentUser.email}</div>
           </div>
 
           <div className="mt-5 flex flex-col gap-2.5">

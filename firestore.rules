@@ -12,9 +12,12 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Identifica Administrador da Plataforma (registrado na coleção platformAdmins)
+    // Identifica Administrador da Plataforma (registrado na coleção platformAdmins ou e-mail mestre da plataforma)
     function isPlatformAdmin() {
-      return isAuthenticated() && exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid));
+      return isAuthenticated() && (
+        exists(/databases/$(database)/documents/platformAdmins/$(request.auth.uid)) ||
+        (request.auth.token.email != null && request.auth.token.email.lower() == 'dyones21@gmail.com')
+      );
     }
 
     // Verifica se o usuário autenticado possui registro de negócio associado
@@ -75,12 +78,15 @@ service cloud.firestore {
         isOwnerOfBusiness(businessId) || 
         (isAuthenticated() && resource.data.ownerUid == request.auth.uid);
 
-      // Criação permitida para admin da plataforma ou para o usuário criando sua nova empresa
+      // Criação permitida para admin da plataforma ou para o usuário criando sua nova empresa (obrigatoriamente inativa, aguardando aprovação do admin)
       allow create: if isAuthenticated() && (
-        isPlatformAdmin() ||
-        (request.resource.data.ownerUid != null && request.resource.data.ownerUid == request.auth.uid) ||
-        isOwnerOfBusiness(businessId) ||
-        (request.resource.data.ownerEmail != null && request.auth.token.email != null && request.resource.data.ownerEmail.lower() == request.auth.token.email.lower())
+        isPlatformAdmin() || (
+          request.resource.data.active == false &&
+          (
+            (request.resource.data.ownerUid != null && request.resource.data.ownerUid == request.auth.uid) ||
+            (request.resource.data.ownerEmail != null && request.auth.token.email != null && request.resource.data.ownerEmail.lower() == request.auth.token.email.lower())
+          )
+        )
       );
 
       // Atualização: Admin ou dono do negócio (dono não pode alterar o status active)

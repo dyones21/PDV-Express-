@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User } from 'firebase/auth';
-import { collection, doc, getDocs, updateDoc } from 'firebase/firestore';
+import { collection, doc, getDocs, getDocsFromServer, updateDoc, onSnapshot, setDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { Business } from '@/types';
 import { 
@@ -53,11 +53,33 @@ export default function AdminPage() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
+  function parseDate(val: unknown): string {
+    if (!val) return new Date().toISOString();
+    if (typeof val === 'string') return val;
+    if (typeof (val as { toDate?: () => Date }).toDate === 'function') {
+      try {
+        return (val as { toDate: () => Date }).toDate().toISOString();
+      } catch {
+        return new Date().toISOString();
+      }
+    }
+    if (typeof (val as { seconds?: number }).seconds === 'number') {
+      return new Date((val as { seconds: number }).seconds * 1000).toISOString();
+    }
+    return new Date().toISOString();
+  }
+
   const fetchBusinesses = useCallback(async () => {
     setIsLoading(true);
     try {
       const colRef = collection(db, 'businesses');
-      const snap = await getDocs(colRef);
+      let snap;
+      try {
+        // Tenta obter diretamente do servidor para contornar qualquer cache estagnado
+        snap = await getDocsFromServer(colRef);
+      } catch {
+        snap = await getDocs(colRef);
+      }
       const list: Business[] = snap.docs.map((docSnap) => {
         const data = docSnap.data();
         return {
@@ -65,13 +87,18 @@ export default function AdminPage() {
           name: data.name || 'Sem nome',
           ownerEmail: data.ownerEmail,
           ownerUid: data.ownerUid,
-          createdAt: data.createdAt || new Date().toISOString(),
+          createdAt: parseDate(data.createdAt),
           active: data.active !== false,
         };
       });
 
-      // Ordenar por data de criação decrescente
-      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      // Ordenar por data de criação decrescente com cálculo seguro
+      list.sort((a, b) => {
+        const timeA = new Date(a.createdAt).getTime();
+        const timeB = new Date(b.createdAt).getTime();
+        if (isNaN(timeA) || isNaN(timeB)) return 0;
+        return timeB - timeA;
+      });
 
       setBusinesses(list);
       setIsAdmin(true);
@@ -81,7 +108,6 @@ export default function AdminPage() {
       if (code === 'permission-denied') {
         setIsAdmin(false);
       } else {
-        // Se for outro erro, assume falta de acesso para segurança
         setIsAdmin(false);
       }
     } finally {
@@ -90,10 +116,72 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    let unsubscribeSnapshot: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+        unsubscribeSnapshot = null;
+      }
+
       if (user) {
-        fetchBusinesses();
+        setIsLoading(true);
+
+        // Se o usuário for o administrador mestre, garante o registro na coleção platformAdmins
+        if (user.email && user.email.toLowerCase() === 'dyones21@gmail.com') {
+          try {
+            await setDoc(
+              doc(db, 'platformAdmins', user.uid),
+              {
+                email: user.email.toLowerCase(),
+                role: 'superadmin',
+                updatedAt: new Date().toISOString(),
+              },
+              { merge: true }
+            );
+          } catch {
+            // Ignora se as regras já autorizarem via e-mail direto
+          }
+        }
+
+        const colRef = collection(db, 'businesses');
+        // Escuta atualizações em tempo real: novos cadastros aparecem instantaneamente no painel
+        unsubscribeSnapshot = onSnapshot(
+          colRef,
+          (snap) => {
+            const list: Business[] = snap.docs.map((docSnap) => {
+              const data = docSnap.data();
+              return {
+                id: docSnap.id,
+                name: data.name || 'Sem nome',
+                ownerEmail: data.ownerEmail,
+                ownerUid: data.ownerUid,
+                createdAt: parseDate(data.createdAt),
+                active: data.active !== false,
+              };
+            });
+
+            list.sort((a, b) => {
+              const timeA = new Date(a.createdAt).getTime();
+              const timeB = new Date(b.createdAt).getTime();
+              if (isNaN(timeA) || isNaN(timeB)) return 0;
+              return timeB - timeA;
+            });
+
+            setBusinesses(list);
+            setIsAdmin(true);
+            setIsLoading(false);
+          },
+          (err) => {
+            console.warn('Erro no listener de negócios do painel admin:', err);
+            const code = (err as { code?: string })?.code;
+            if (code === 'permission-denied') {
+              setIsAdmin(false);
+            }
+            setIsLoading(false);
+          }
+        );
       } else {
         setIsAdmin(null);
         setBusinesses([]);
@@ -101,8 +189,11 @@ export default function AdminPage() {
       }
     });
 
-    return () => unsubscribe();
-  }, [fetchBusinesses]);
+    return () => {
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+      unsubscribeAuth();
+    };
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
