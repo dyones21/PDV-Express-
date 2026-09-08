@@ -121,15 +121,10 @@ export function DebtorsTab({ customers, sales, onOpenSaleDetails }: DebtorsTabPr
       const remaining = Number(s.remainingAmount || 0);
       if (remaining <= 0) continue;
       const paidNow = Math.min(moneyLeft, remaining);
-      const newRemaining = Math.max(0, remaining - paidNow);
-      const newPaid = Number(s.paidAmount || 0) + paidNow;
-      const newStatus: 'paid' | 'partial' = newRemaining === 0 ? 'paid' : 'partial';
 
       saleUpdates.push({
         saleId: s.id,
-        newPaidAmount: newPaid,
-        newRemainingAmount: newRemaining,
-        newStatus,
+        deltaAmount: paidNow,
       });
 
       moneyLeft -= paidNow;

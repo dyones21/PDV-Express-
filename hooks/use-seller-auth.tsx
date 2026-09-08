@@ -22,6 +22,33 @@ const SellerAuthContext = createContext<SellerAuthContextType | undefined>(undef
 const STORAGE_KEY = 'pdv_active_seller_id';
 const LEGACY_STORAGE_KEY = 'vendas_queijo_active_seller_id';
 
+interface PinAttemptsData {
+  count: number;
+  lockedUntil: number | null;
+}
+
+function getPinAttempts(sellerId: string): PinAttemptsData {
+  if (typeof window === 'undefined') return { count: 0, lockedUntil: null };
+  try {
+    const raw = localStorage.getItem(`pdv_pin_attempts_${sellerId}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        count: typeof parsed.count === 'number' ? parsed.count : 0,
+        lockedUntil: typeof parsed.lockedUntil === 'number' ? parsed.lockedUntil : null,
+      };
+    }
+  } catch {}
+  return { count: 0, lockedUntil: null };
+}
+
+function savePinAttempts(sellerId: string, data: PinAttemptsData) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(`pdv_pin_attempts_${sellerId}`, JSON.stringify(data));
+  } catch {}
+}
+
 export function SellerAuthProvider({ children }: { children: React.ReactNode }) {
   const { businessId } = useBusiness();
   const [sellers, setSellers] = useState<Seller[]>([]);
@@ -77,8 +104,28 @@ export function SellerAuthProvider({ children }: { children: React.ReactNode }) 
       return { success: true };
     }
 
+    // Checar tentativas de PIN no localStorage
+    const attempts = getPinAttempts(sellerId);
+    const now = Date.now();
+
+    if (attempts.lockedUntil && attempts.lockedUntil > now) {
+      const remainingSeconds = Math.max(1, Math.ceil((attempts.lockedUntil - now) / 1000));
+      return {
+        success: false,
+        error: `Muitas tentativas erradas. Tente novamente em ${remainingSeconds} segundos.`,
+      };
+    }
+
+    // Se o bloqueio anterior já expirou, reseta o contador
+    if (attempts.lockedUntil && attempts.lockedUntil <= now) {
+      attempts.count = 0;
+      attempts.lockedUntil = null;
+      savePinAttempts(sellerId, attempts);
+    }
+
     const isValid = await verifyPin(pin, seller.pinSalt, seller.pinHash);
     if (isValid) {
+      savePinAttempts(sellerId, { count: 0, lockedUntil: null });
       setActiveSeller(seller);
       if (typeof window !== 'undefined') {
         localStorage.setItem(`${STORAGE_KEY}_${businessId}`, seller.id);
@@ -87,7 +134,18 @@ export function SellerAuthProvider({ children }: { children: React.ReactNode }) 
       return { success: true };
     }
 
-    return { success: false, error: 'PIN incorreto. Tente novamente.' };
+    const newCount = (attempts.count || 0) + 1;
+    if (newCount >= 5) {
+      const lockedUntil = now + 60000;
+      savePinAttempts(sellerId, { count: newCount, lockedUntil });
+      return {
+        success: false,
+        error: 'Muitas tentativas erradas. Tente novamente em 60 segundos.',
+      };
+    } else {
+      savePinAttempts(sellerId, { count: newCount, lockedUntil: null });
+      return { success: false, error: 'PIN incorreto. Tente novamente.' };
+    }
   };
 
   const quickSelectSeller = (seller: Seller) => {

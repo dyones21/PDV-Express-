@@ -15,6 +15,7 @@ import {
   writeBatch,
   deleteDoc,
   where,
+  runTransaction,
 } from 'firebase/firestore';
 import { db, DEFAULT_BUSINESS_ID, ensureAuthSession } from './firebase';
 import { Customer, Product, Sale, Payment, Seller, Business } from '@/types';
@@ -759,9 +760,7 @@ export function subscribePayments(
 
 export interface SalePaymentUpdate {
   saleId: string;
-  newPaidAmount: number;
-  newRemainingAmount: number;
-  newStatus: 'paid' | 'partial';
+  deltaAmount: number; // valor sendo aplicado a ESSA venda agora
 }
 
 export async function recordPayment(
@@ -802,17 +801,30 @@ export async function recordPayment(
     }
   }
 
-  // 3. Update settled sales (using pre-calculated updates without reading Firestore)
+  // 3. Update settled sales atomically using runTransaction
   if (saleUpdates && saleUpdates.length > 0) {
     for (const update of saleUpdates) {
       try {
         const sRef = doc(getSalesCol(businessId), update.saleId);
-        await updateDoc(sRef, cleanUndefined({
-          paidAmount: update.newPaidAmount,
-          remainingAmount: update.newRemainingAmount,
-          paymentStatus: update.newStatus,
-          updatedAt: nowIso,
-        }));
+        await runTransaction(db, async (transaction) => {
+          const sSnap = await transaction.get(sRef);
+          if (!sSnap.exists()) return;
+          const sData = sSnap.data();
+          const remainingAtual = Number(sData?.remainingAmount ?? 0);
+          const paidAtual = Number(sData?.paidAmount ?? 0);
+          const deltaAmount = Number(update.deltaAmount || 0);
+
+          const newRemaining = Math.max(0, remainingAtual - deltaAmount);
+          const newPaid = paidAtual + deltaAmount;
+          const newStatus: 'paid' | 'partial' = newRemaining <= 0 ? 'paid' : 'partial';
+
+          transaction.update(sRef, cleanUndefined({
+            paidAmount: newPaid,
+            remainingAmount: newRemaining,
+            paymentStatus: newStatus,
+            updatedAt: nowIso,
+          }));
+        });
       } catch (e: any) {
         console.error(`Erro ao atualizar venda ${update.saleId}:`, e);
         throw new Error(`Pagamento registrado, mas houve erro ao atualizar a venda: ${e?.message || e}`);
