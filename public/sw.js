@@ -31,6 +31,24 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+async function fetchWithRetry(request, retries = 2, delayMs = 1200) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(request);
+      if (response.status === 429 || response.status === 503) {
+        if (attempt < retries) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          continue;
+        }
+      }
+      return response;
+    } catch (err) {
+      if (attempt === retries) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
 self.addEventListener('fetch', (event) => {
   const url = event.request.url;
 
@@ -49,7 +67,7 @@ self.addEventListener('fetch', (event) => {
   // Handle navigation requests (HTML pages)
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request)
+      fetchWithRetry(event.request)
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const responseClone = networkResponse.clone();
