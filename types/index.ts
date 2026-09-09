@@ -43,6 +43,22 @@ export interface Product {
   active: boolean;
   category?: string;
   sortOrder?: number;
+  imageUrl?: string;
+}
+
+export interface PublicCatalogItem {
+  id: string;
+  name: string;
+  price: number;
+  unit: string;
+  imageUrl?: string;
+  active: boolean;
+}
+
+export interface PublicCatalog {
+  businessName: string;
+  active: boolean;
+  updatedAt?: string;
 }
 
 export interface SaleItem {

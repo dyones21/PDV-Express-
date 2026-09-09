@@ -6,6 +6,9 @@ import { formatCurrency, formatCurrencyInput, parseCurrencyToNumber } from '@/li
 import { addProduct, updateProduct, restockProduct } from '@/lib/db';
 import { useNetworkSync } from '@/hooks/use-network-sync';
 import { useBusiness } from '@/context/BusinessContext';
+import { storage, db } from '@/lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { doc, collection } from 'firebase/firestore';
 import { 
   Package, 
   Plus, 
@@ -21,8 +24,65 @@ import {
   Percent,
   Check,
   ShoppingBag,
-  Scale
+  Scale,
+  Camera,
+  Trash2,
+  Loader2,
+  ExternalLink
 } from 'lucide-react';
+
+/**
+ * Redimensiona a imagem no navegador usando HTML5 Canvas para largura máxima de 800px,
+ * mantendo a proporção original e exportando como JPEG comprimido (~0.75 de qualidade).
+ */
+function resizeImageToJpegBlob(file: File, maxWidth = 800, quality = 0.75): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Canvas 2D context indisponível'));
+          return;
+        }
+
+        // Fundo branco caso a imagem original possua canal alfa/transparência
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error('Falha ao exportar imagem processada em JPEG'));
+            }
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+      img.onerror = () => reject(new Error('Falha ao ler arquivo de imagem'));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error('Falha ao ler arquivo do dispositivo'));
+    reader.readAsDataURL(file);
+  });
+}
 
 interface ProductsTabProps {
   products: Product[];
@@ -54,6 +114,11 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
   const [stockQuantity, setStockQuantity] = useState('');
   const [unit, setUnit] = useState('un');
   const [category, setCategory] = useState('Geral');
+  const [imageUrl, setImageUrl] = useState<string>('');
+  const [imagePreview, setImagePreview] = useState<string>('');
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Weight cost mode state for Product Form
@@ -95,6 +160,23 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
   const totalStockSaleValue = products.reduce((acc, p) => acc + ((typeof p.price === 'number' ? p.price : 0) * (typeof p.stockQuantity === 'number' ? p.stockQuantity : 0)), 0);
   const lowStockCount = products.filter((p) => (typeof p.stockQuantity === 'number' ? p.stockQuantity : 0) < 5 && p.active !== false).length;
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSelectedImageFile(file);
+    const objectUrl = URL.createObjectURL(file);
+    setImagePreview(objectUrl);
+  };
+
+  const handleRemovePhoto = () => {
+    setSelectedImageFile(null);
+    setImagePreview('');
+    setImageUrl('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleOpenNew = () => {
     setEditingProduct(null);
     setName('');
@@ -108,6 +190,10 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
     setBaseStockQty(0);
     setUnit('un');
     setCategory('Geral');
+    setImageUrl('');
+    setImagePreview('');
+    setSelectedImageFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
     setIsFormModalOpen(true);
   };
 
@@ -125,6 +211,10 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
     setBaseStockQty(initialStock);
     setUnit(p.unit || 'un');
     setCategory(p.category || 'Geral');
+    setImageUrl(p.imageUrl || '');
+    setImagePreview(p.imageUrl || '');
+    setSelectedImageFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
     setIsFormModalOpen(true);
   };
 
@@ -175,32 +265,81 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
 
     try {
       setIsSubmitting(true);
-      if (editingProduct) {
-        await updateProduct(businessId, editingProduct.id, {
-          name: name.trim(),
-          price: parsedPrice,
-          costPrice: parsedCost,
-          stockQuantity: parsedStock,
-          unit,
-          category,
-        });
+      let finalImageUrl: string | undefined = imageUrl.trim() || undefined;
+
+      // Se houver novo arquivo selecionado, otimizar no cliente e enviar ao Firebase Storage
+      if (selectedImageFile) {
+        setIsUploadingImage(true);
+        const targetId = editingProduct
+          ? editingProduct.id
+          : doc(collection(db, 'businesses', businessId, 'products')).id;
+
+        const resizedBlob = await resizeImageToJpegBlob(selectedImageFile, 800, 0.75);
+        const storageRef = ref(storage, `businesses/${businessId}/products/${targetId}.jpg`);
+        await uploadBytes(storageRef, resizedBlob, { contentType: 'image/jpeg' });
+        finalImageUrl = await getDownloadURL(storageRef);
+
+        if (editingProduct) {
+          await updateProduct(businessId, editingProduct.id, {
+            name: name.trim(),
+            price: parsedPrice,
+            costPrice: parsedCost,
+            stockQuantity: parsedStock,
+            unit,
+            category,
+            imageUrl: finalImageUrl,
+          });
+        } else {
+          await addProduct(
+            businessId,
+            {
+              name: name.trim(),
+              price: parsedPrice,
+              costPrice: parsedCost,
+              stockQuantity: parsedStock,
+              unit,
+              category,
+              active: true,
+              imageUrl: finalImageUrl,
+            },
+            targetId
+          );
+        }
       } else {
-        await addProduct(businessId, {
-          name: name.trim(),
-          price: parsedPrice,
-          costPrice: parsedCost,
-          stockQuantity: parsedStock,
-          unit,
-          category,
-          active: true,
-        });
+        if (editingProduct) {
+          await updateProduct(businessId, editingProduct.id, {
+            name: name.trim(),
+            price: parsedPrice,
+            costPrice: parsedCost,
+            stockQuantity: parsedStock,
+            unit,
+            category,
+            imageUrl: finalImageUrl,
+          });
+        } else {
+          await addProduct(businessId, {
+            name: name.trim(),
+            price: parsedPrice,
+            costPrice: parsedCost,
+            stockQuantity: parsedStock,
+            unit,
+            category,
+            active: true,
+            imageUrl: finalImageUrl,
+          });
+        }
       }
+
       setIsFormModalOpen(false);
       setEditingProduct(null);
+      setSelectedImageFile(null);
+      setImagePreview('');
+      setImageUrl('');
     } catch (err: any) {
       alert('Erro ao salvar produto: ' + err.message);
     } finally {
       setIsSubmitting(false);
+      setIsUploadingImage(false);
     }
   };
 
@@ -332,15 +471,29 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
           </p>
         </div>
 
-        <button
-          id="btn-add-new-product"
-          type="button"
-          onClick={handleOpenNew}
-          className="py-2 px-3 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 transition active:scale-95"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Novo Produto</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <a
+            id="btn-open-virtual-catalog"
+            href={`/catalogo/${businessId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="py-2 px-2.5 bg-neutral-100 hover:bg-neutral-200 active:bg-neutral-300 text-neutral-800 font-bold text-xs rounded-xl shadow-2xs flex items-center gap-1.5 transition active:scale-95 border border-neutral-300"
+          >
+            <ShoppingBag className="w-3.5 h-3.5 text-amber-700" />
+            <span className="hidden sm:inline">Ver Catálogo</span>
+            <ExternalLink className="w-3 h-3 text-neutral-400" />
+          </a>
+
+          <button
+            id="btn-add-new-product"
+            type="button"
+            onClick={handleOpenNew}
+            className="py-2 px-3 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 transition active:scale-95"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Novo Produto</span>
+          </button>
+        </div>
       </div>
 
       {/* Restock Pending Sync Notice */}
@@ -472,22 +625,34 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
                 }`}
               >
                 {/* Header Line */}
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-sm text-neutral-900 truncate">
-                        {typeof prod.name === 'string' && prod.name ? prod.name : 'Sem nome'}
-                      </h3>
-                      {!prod.active && (
-                        <span className="text-[10px] font-bold text-neutral-500 bg-neutral-200 px-1.5 py-0.5 rounded">
-                          Inativo
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-neutral-500 mt-0.5 flex items-center gap-1.5">
-                      <span>{typeof prod.category === 'string' && prod.category ? prod.category : 'Geral'}</span>
-                      <span>•</span>
-                      <span>Unidade: {typeof prod.unit === 'string' && prod.unit ? prod.unit : 'un'}</span>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    {prod.imageUrl ? (
+                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-neutral-100 border border-neutral-200 flex-shrink-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={prod.imageUrl}
+                          alt={prod.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ) : null}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-sm text-neutral-900 truncate">
+                          {typeof prod.name === 'string' && prod.name ? prod.name : 'Sem nome'}
+                        </h3>
+                        {!prod.active && (
+                          <span className="text-[10px] font-bold text-neutral-500 bg-neutral-200 px-1.5 py-0.5 rounded">
+                            Inativo
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-neutral-500 mt-0.5 flex items-center gap-1.5">
+                        <span>{typeof prod.category === 'string' && prod.category ? prod.category : 'Geral'}</span>
+                        <span>•</span>
+                        <span>Unidade: {typeof prod.unit === 'string' && prod.unit ? prod.unit : 'un'}</span>
+                      </div>
                     </div>
                   </div>
 
@@ -618,6 +783,68 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
             </div>
 
             <form onSubmit={handleSaveProduct} className="p-4 space-y-3 overflow-y-auto">
+              {/* Foto do Produto para o Catálogo Virtual */}
+              <div>
+                <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                  Foto do Produto (Catálogo Virtual)
+                </label>
+                <input
+                  ref={fileInputRef}
+                  id="input-prod-photo-file"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+
+                {imagePreview ? (
+                  <div className="flex items-center gap-3 p-2 bg-neutral-50 rounded-xl border border-neutral-200">
+                    <div className="w-16 h-16 rounded-lg overflow-hidden bg-neutral-200 flex-shrink-0 border border-neutral-300 relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={imagePreview}
+                        alt="Prévia do produto"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <p className="text-xs font-bold text-neutral-800 truncate">
+                        {selectedImageFile ? selectedImageFile.name : 'Foto cadastrada'}
+                      </p>
+                      <p className="text-[11px] text-neutral-500">
+                        {selectedImageFile ? 'Será otimizada para até 800px' : 'Visível no catálogo virtual'}
+                      </p>
+                      <div className="flex items-center gap-2 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="text-[11px] font-bold text-amber-700 hover:text-amber-800"
+                        >
+                          Trocar foto
+                        </button>
+                        <span className="text-neutral-300">•</span>
+                        <button
+                          type="button"
+                          onClick={handleRemovePhoto}
+                          className="text-[11px] font-bold text-red-600 hover:text-red-700"
+                        >
+                          Remover
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full p-3 border-2 border-dashed border-neutral-300 hover:border-amber-500 rounded-xl flex items-center justify-center gap-2 text-neutral-600 hover:text-amber-800 bg-neutral-50/50 hover:bg-amber-50/30 transition text-xs font-semibold"
+                  >
+                    <Camera className="w-4 h-4 text-amber-700" />
+                    <span>Adicionar foto para o catálogo virtual</span>
+                  </button>
+                )}
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-neutral-700 mb-1">
                   Nome do Produto *

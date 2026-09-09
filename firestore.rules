@@ -120,6 +120,17 @@ service cloud.firestore {
         allow read, write: if isPlatformAdmin() || isOwnerOfBusiness(businessId);
       }
     }
+
+    // 6. Coleção Raiz: publicCatalog (Catálogo Virtual Público - Vitrine de Produtos)
+    // Leitura irrestrita para qualquer visitante sem login; escrita restrita ao dono do negócio ou admin
+    match /publicCatalog/{businessId} {
+      allow read: if true;
+      allow write: if isPlatformAdmin() || isOwnerOfBusiness(businessId);
+      match /items/{productId} {
+        allow read: if true;
+        allow write: if isPlatformAdmin() || isOwnerOfBusiness(businessId);
+      }
+    }
   }
 }
 

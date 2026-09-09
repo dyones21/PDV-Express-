@@ -14,6 +14,7 @@ import {
   getDocs
 } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
+import { getStorage } from 'firebase/storage';
 import configJson from '../firebase-applet-config.json';
 
 export const TARGET_PROJECT_ID = 'pdvexpress-c286f';
@@ -59,6 +60,7 @@ try {
 
 export const db = firestoreDb;
 export const auth = getAuth(app);
+export const storage = getStorage(app);
 
 // Default Business ID for the MEI artisan cheese operation (fallback de segurança)
 export const DEFAULT_BUSINESS_ID = 'queijaria-artesanal-01';

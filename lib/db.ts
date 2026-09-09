@@ -501,6 +501,7 @@ export function subscribeProducts(
           stockQuantity: sanitizeNumber(cleanData.stockQuantity, 0),
           price: sanitizeNumber(cleanData.price, 0),
           costPrice: sanitizeNumber(cleanData.costPrice, 0),
+          imageUrl: typeof cleanData.imageUrl === 'string' && cleanData.imageUrl ? cleanData.imageUrl : undefined,
         } as Product;
       });
       callback(products);
@@ -509,12 +510,73 @@ export function subscribeProducts(
   );
 }
 
+// Cache local para evitar chamadas getDoc repetitivas no documento raiz do catálogo público
+const knownPublicCatalogs = new Set<string>();
+
+/**
+ * Sincroniza um item de produto com o catálogo público (publicCatalog/{businessId}/items/{productId}).
+ * Grava ESTRITAMENTE: { name, price, unit, imageUrl, active }.
+ * NUNCA grava costPrice, stockQuantity ou dados privados.
+ */
+export async function syncPublicCatalogItem(
+  businessId = DEFAULT_BUSINESS_ID,
+  product: Product
+): Promise<void> {
+  try {
+    // 1. Garantir que o documento pai publicCatalog/{businessId} existe
+    if (!knownPublicCatalogs.has(businessId)) {
+      const publicCatalogRef = doc(db, 'publicCatalog', businessId);
+      const publicSnap = await getDoc(publicCatalogRef);
+      if (!publicSnap.exists()) {
+        const bSnap = await getDoc(getBusinessRef(businessId));
+        const businessName = bSnap.exists()
+          ? sanitizeString(bSnap.data()?.name, 'Meu Catálogo')
+          : 'Meu Catálogo';
+        await setDoc(publicCatalogRef, cleanUndefined({
+          businessName,
+          active: true,
+          updatedAt: new Date().toISOString(),
+        }));
+      }
+      knownPublicCatalogs.add(businessId);
+    }
+
+    // 2. Gravar exclusivamente os campos públicos permitidos
+    const itemRef = doc(db, 'publicCatalog', businessId, 'items', product.id);
+    const publicPayload: Record<string, any> = {
+      name: sanitizeString(product.name, 'Produto'),
+      price: sanitizeNumber(product.price, 0),
+      unit: sanitizeString(product.unit, 'un'),
+      active: product.active !== false,
+    };
+    if (product.imageUrl && typeof product.imageUrl === 'string') {
+      publicPayload.imageUrl = product.imageUrl;
+    }
+
+    await setDoc(itemRef, cleanUndefined(publicPayload));
+  } catch (err) {
+    console.warn('Erro ao sincronizar item com catálogo público:', err);
+  }
+}
+
 export async function addProduct(
   businessId = DEFAULT_BUSINESS_ID,
-  productData: Omit<Product, 'id'>
+  productData: Omit<Product, 'id'>,
+  customId?: string
 ): Promise<string> {
   await ensureAuthSession();
-  const docRef = await addDoc(getProductsCol(businessId), cleanUndefined(productData));
+  let docRef;
+  if (customId) {
+    docRef = doc(getProductsCol(businessId), customId);
+    await setDoc(docRef, cleanUndefined(productData));
+  } else {
+    docRef = await addDoc(getProductsCol(businessId), cleanUndefined(productData));
+  }
+  const createdProduct: Product = {
+    id: docRef.id,
+    ...productData,
+  };
+  await syncPublicCatalogItem(businessId, createdProduct);
   return docRef.id;
 }
 
@@ -526,6 +588,25 @@ export async function updateProduct(
   await ensureAuthSession();
   const docRef = doc(getProductsCol(businessId), productId);
   await updateDoc(docRef, cleanUndefined(updates));
+
+  // Sincronizar dados atualizados com o catálogo público
+  try {
+    const updatedSnap = await getDoc(docRef);
+    if (updatedSnap.exists()) {
+      const pData = sanitizeDocData(updatedSnap.data());
+      const syncedProduct: Product = {
+        id: productId,
+        name: sanitizeString(pData.name, 'Produto'),
+        price: sanitizeNumber(pData.price, 0),
+        unit: sanitizeString(pData.unit, 'un'),
+        active: pData.active !== false,
+        imageUrl: typeof pData.imageUrl === 'string' ? pData.imageUrl : undefined,
+      };
+      await syncPublicCatalogItem(businessId, syncedProduct);
+    }
+  } catch (syncErr) {
+    console.warn('Aviso: falha na sincronização do catálogo público após updateProduct:', syncErr);
+  }
 }
 
 export async function restockProduct(
@@ -547,6 +628,77 @@ export async function restockProduct(
     updates.price = newSalePrice;
   }
   await updateDoc(docRef, cleanUndefined(updates));
+
+  // Se o preço de venda foi alterado na reposição, sincronizar com o catálogo público
+  if (newSalePrice !== undefined && newSalePrice > 0) {
+    try {
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const pData = sanitizeDocData(snap.data());
+        const syncedProduct: Product = {
+          id: productId,
+          name: sanitizeString(pData.name, 'Produto'),
+          price: sanitizeNumber(pData.price, newSalePrice),
+          unit: sanitizeString(pData.unit, 'un'),
+          active: pData.active !== false,
+          imageUrl: typeof pData.imageUrl === 'string' ? pData.imageUrl : undefined,
+        };
+        await syncPublicCatalogItem(businessId, syncedProduct);
+      }
+    } catch (syncErr) {
+      console.warn('Aviso: falha na sincronização do catálogo público após reposição:', syncErr);
+    }
+  }
+}
+
+// ----------------- PUBLIC CATALOG READ HELPERS -----------------
+
+export async function getPublicCatalog(businessId: string): Promise<{ businessName: string; active: boolean } | null> {
+  try {
+    const catalogRef = doc(db, 'publicCatalog', businessId);
+    const snap = await getDoc(catalogRef);
+    if (!snap.exists()) return null;
+    const data = sanitizeDocData(snap.data());
+    return {
+      businessName: sanitizeString(data.businessName, 'Catálogo de Produtos'),
+      active: data.active !== false,
+    };
+  } catch (err) {
+    console.warn('Erro ao carregar catálogo público:', err);
+    return null;
+  }
+}
+
+export async function getPublicCatalogItems(businessId: string): Promise<Array<{
+  id: string;
+  name: string;
+  price: number;
+  unit: string;
+  imageUrl?: string;
+  active: boolean;
+}>> {
+  try {
+    const itemsCol = collection(db, 'publicCatalog', businessId, 'items');
+    const snap = await getDocs(itemsCol);
+    const items = snap.docs
+      .map((d) => {
+        const dData = sanitizeDocData(d.data());
+        return {
+          id: d.id,
+          name: sanitizeString(dData.name, 'Produto'),
+          price: sanitizeNumber(dData.price, 0),
+          unit: sanitizeString(dData.unit, 'un'),
+          imageUrl: typeof dData.imageUrl === 'string' && dData.imageUrl ? dData.imageUrl : undefined,
+          active: dData.active !== false,
+        };
+      })
+      .filter((item) => item.active);
+
+    return items;
+  } catch (err) {
+    console.warn('Erro ao carregar itens do catálogo público:', err);
+    return [];
+  }
 }
 
 // ----------------- SALES -----------------
