@@ -23,7 +23,8 @@ import {
   Sparkles, 
   Share2,
   X,
-  CalendarClock
+  CalendarClock,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface NewSaleTabProps {
@@ -74,7 +75,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
   const [successSaleData, setSuccessSaleData] = useState<any | null>(null);
 
   // Safety ref: prevents duplicate sale if previous attempt finished saving in background/local cache
-  const pendingSavedSaleRef = useRef<{ id: string; saleData: Record<string, any> } | null>(null);
+  const pendingSavedSaleRef = useRef<{ id: string; saleData: Record<string, any>; warnings?: string[] } | null>(null);
 
   // Next visit reminder in sale success modal
   const [selectedReminderDate, setSelectedReminderDate] = useState<string>('');
@@ -282,7 +283,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
 
     // If previous attempt already succeeded saving in background/local cache, use it without duplicating
     if (pendingSavedSaleRef.current) {
-      const { id, saleData } = pendingSavedSaleRef.current;
+      const { id, saleData, warnings } = pendingSavedSaleRef.current;
       if (
         saleData.customerId === currentCustomerId &&
         saleData.totalAmount === calculatedTotal &&
@@ -292,6 +293,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
         setSuccessSaleData({
           ...saleData,
           id,
+          warnings: warnings || [],
           hasPendingWrites: !isOnline,
         });
 
@@ -352,10 +354,10 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
           longitude: locationCoords.longitude,
         };
 
-        const saleId = await recordSale(businessId, fullSaleData);
+        const { saleId, warnings } = await recordSale(businessId, fullSaleData);
         // Cache result in ref to avoid duplicates if timeout fires right before/during resolution
-        pendingSavedSaleRef.current = { id: saleId, saleData: fullSaleData };
-        return { saleId, saleData: fullSaleData };
+        pendingSavedSaleRef.current = { id: saleId, saleData: fullSaleData, warnings };
+        return { saleId, saleData: fullSaleData, warnings };
       };
 
       let timeoutId: any;
@@ -379,18 +381,21 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
 
         let finalSaleId = fallbackSaleId;
         let finalSaleData: Record<string, any> = baseSaleData;
+        let finalWarnings: string[] = [];
         let isAwaitingSync = !isOnline;
 
         if ('isOfflineTimeout' in raceResult) {
           isAwaitingSync = true;
-          const currentSaved = pendingSavedSaleRef.current as { id: string; saleData: Record<string, any> } | null;
+          const currentSaved = pendingSavedSaleRef.current as { id: string; saleData: Record<string, any>; warnings?: string[] } | null;
           if (currentSaved) {
             finalSaleId = currentSaved.id;
             finalSaleData = currentSaved.saleData;
+            finalWarnings = currentSaved.warnings || [];
           }
         } else {
           finalSaleId = raceResult.saleId;
           finalSaleData = raceResult.saleData;
+          finalWarnings = raceResult.warnings || [];
           isAwaitingSync = !isOnline;
         }
 
@@ -399,6 +404,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
         setSuccessSaleData({
           ...finalSaleData,
           id: finalSaleId,
+          warnings: finalWarnings,
           hasPendingWrites: isAwaitingSync,
         });
 
@@ -420,12 +426,13 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
         clearTimeout(timeoutId);
         if (innerErr?.message === 'TIMEOUT_SAVE') {
           // If the sale completed right as timeout fired
-          const saved = pendingSavedSaleRef.current as { id: string; saleData: Record<string, any> } | null;
+          const saved = pendingSavedSaleRef.current as { id: string; saleData: Record<string, any>; warnings?: string[] } | null;
           if (saved) {
             pendingSavedSaleRef.current = null;
             setSuccessSaleData({
               ...saved.saleData,
               id: saved.id,
+              warnings: saved.warnings || [],
               hasPendingWrites: !isOnline,
             });
             setSelectedReminderDate('');
@@ -1054,6 +1061,23 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
                 </span>
               </div>
             </div>
+
+            {/* Bloco de Avisos / Alertas de Processamento Parcial */}
+            {successSaleData.warnings && successSaleData.warnings.length > 0 && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200/90 rounded-xl text-left text-xs text-amber-900 shadow-xs animate-in fade-in duration-150">
+                <div className="flex items-center gap-1.5 font-bold text-amber-950 mb-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                  <span>Atenção</span>
+                </div>
+                <ul className="space-y-1 text-[11px] list-disc list-inside font-medium text-amber-900/90">
+                  {successSaleData.warnings.map((msg: string, idx: number) => (
+                    <li key={idx} className="leading-snug">
+                      {msg}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* ETAPA: Próxima Visita / Retorno (Apenas clientes cadastrados) */}
             {successSaleData.customerId && (

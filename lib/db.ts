@@ -593,9 +593,10 @@ export function subscribeSales(
 export async function recordSale(
   businessId = DEFAULT_BUSINESS_ID,
   saleData: Omit<Sale, 'id' | 'createdAt' | 'hasPendingWrites'>
-): Promise<string> {
+): Promise<{ saleId: string; warnings: string[] }> {
   await ensureAuthSession();
   const nowIso = new Date().toISOString();
+  const warnings: string[] = [];
   
   // 1. Create Sale Doc
   const docRef = await addDoc(getSalesCol(businessId), cleanUndefined({
@@ -637,6 +638,7 @@ export async function recordSale(
       }));
     } catch (e) {
       console.warn('Initial payment record warning:', e);
+      warnings.push('O pagamento inicial pode não ter sido registrado corretamente. Confira em Histórico.');
     }
   }
 
@@ -655,11 +657,12 @@ export async function recordSale(
         }
       } catch (e: any) {
         console.error('Erro ao decrementar estoque do produto na venda:', e);
+        warnings.push(`O estoque de "${item.productName}" pode não ter sido atualizado corretamente.`);
       }
     }
   }
 
-  return docRef.id;
+  return { saleId: docRef.id, warnings };
 }
 
 export async function cancelSale(
