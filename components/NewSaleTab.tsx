@@ -99,6 +99,10 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
     return normalizeStr(p.name).includes(term);
   });
 
+  // Produtos filtrados já selecionados (quantidade > 0) e não selecionados
+  const selectedFilteredProducts = filteredProducts.filter((p) => (quantities[p.id] || 0) > 0);
+  const unselectedFilteredProducts = filteredProducts.filter((p) => (quantities[p.id] || 0) <= 0);
+
   // Calculate items and total
   const selectedItems: SaleItem[] = [];
   let calculatedTotal = 0;
@@ -126,6 +130,97 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
       const next = Math.max(0, current + delta);
       return { ...prev, [productId]: next };
     });
+  };
+
+  const renderProductCard = (prod: Product) => {
+    const qty = quantities[prod.id] || 0;
+    const currentPrice = customPriceOverrides[prod.id] !== undefined ? customPriceOverrides[prod.id] : prod.price;
+    const isSelected = qty > 0;
+    const stock = typeof prod.stockQuantity === 'number' ? prod.stockQuantity : 0;
+    const isOverStock = qty > stock;
+
+    return (
+      <div
+        key={prod.id}
+        id={`product-card-${prod.id}`}
+        className={`p-3 rounded-2xl border transition-all ${
+          isSelected
+            ? 'border-amber-500 bg-amber-50/50 shadow-sm'
+            : 'border-neutral-200 bg-white hover:border-neutral-300'
+        }`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          {/* Info */}
+          <div className="flex-1 min-w-0">
+            <div className="font-bold text-sm text-neutral-900 truncate">
+              {typeof prod.name === 'string' && prod.name ? prod.name : 'Produto'}
+            </div>
+            <div className="flex items-center gap-2 text-xs text-neutral-600 mt-0.5 flex-wrap">
+              <span className="font-semibold text-amber-900">
+                {formatCurrency(currentPrice)}
+              </span>
+              <span className="text-neutral-400">/ {typeof prod.unit === 'string' && prod.unit ? prod.unit : 'peça'}</span>
+              <span className="text-neutral-300">•</span>
+              <span
+                className={`text-[11px] font-semibold ${
+                  stock <= 0
+                    ? 'text-red-600'
+                    : stock < 5
+                    ? 'text-amber-700 font-bold'
+                    : 'text-neutral-500'
+                }`}
+              >
+                Estoque: {stock} {typeof prod.unit === 'string' && prod.unit ? prod.unit : 'un'}
+              </span>
+            </div>
+          </div>
+
+          {/* Large Quantity Stepper Buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              id={`btn-minus-${prod.id}`}
+              type="button"
+              disabled={qty === 0}
+              onClick={() => handleQtyChange(prod.id, -1)}
+              className="w-10 h-10 rounded-xl bg-neutral-100 hover:bg-neutral-200 active:bg-neutral-300 text-neutral-800 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center font-bold text-lg transition active:scale-95 shadow-sm"
+            >
+              <Minus className="w-4 h-4" />
+            </button>
+
+            <div className="w-8 text-center font-extrabold text-base text-neutral-900">
+              {qty}
+            </div>
+
+            <button
+              id={`btn-plus-${prod.id}`}
+              type="button"
+              onClick={() => handleQtyChange(prod.id, 1)}
+              className="w-10 h-10 rounded-xl bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white flex items-center justify-center font-bold text-lg transition active:scale-95 shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Overstock soft warning (does not block sale) */}
+        {isSelected && isOverStock && (
+          <div className="mt-2 text-[11px] text-amber-800 bg-amber-100/80 px-2 py-1 rounded-lg font-medium flex items-center gap-1">
+            <span>⚠️</span>
+            <span>Qtd ({qty}) excede o estoque cadastrado ({stock} {typeof prod.unit === 'string' && prod.unit ? prod.unit : 'un'}). A venda será permitida normalmente.</span>
+          </div>
+        )}
+
+        {/* If selected, show subtotal line */}
+        {isSelected && (
+          <div className="mt-2 pt-2 border-t border-amber-200/60 flex items-center justify-between text-xs">
+            <span className="text-amber-800 font-medium">Subtotal deste produto:</span>
+            <span className="font-extrabold text-amber-950">
+              {formatCurrency(qty * currentPrice)}
+            </span>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const handleQuickAddCustomer = async (e: React.FormEvent) => {
@@ -673,97 +768,27 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
           </p>
         ) : (
           <div className="space-y-2.5">
-            {filteredProducts.map((prod) => {
-            const qty = quantities[prod.id] || 0;
-            const currentPrice = customPriceOverrides[prod.id] !== undefined ? customPriceOverrides[prod.id] : prod.price;
-            const isSelected = qty > 0;
-            const stock = typeof prod.stockQuantity === 'number' ? prod.stockQuantity : 0;
-            const isOverStock = qty > stock;
-
-            return (
-              <div
-                key={prod.id}
-                id={`product-card-${prod.id}`}
-                className={`p-3 rounded-2xl border transition-all ${
-                  isSelected
-                    ? 'border-amber-500 bg-amber-50/50 shadow-sm'
-                    : 'border-neutral-200 bg-white hover:border-neutral-300'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold text-sm text-neutral-900 truncate">
-                      {typeof prod.name === 'string' && prod.name ? prod.name : 'Produto'}
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-neutral-600 mt-0.5 flex-wrap">
-                      <span className="font-semibold text-amber-900">
-                        {formatCurrency(currentPrice)}
-                      </span>
-                      <span className="text-neutral-400">/ {typeof prod.unit === 'string' && prod.unit ? prod.unit : 'peça'}</span>
-                      <span className="text-neutral-300">•</span>
-                      <span
-                        className={`text-[11px] font-semibold ${
-                          stock <= 0
-                            ? 'text-red-600'
-                            : stock < 5
-                            ? 'text-amber-700 font-bold'
-                            : 'text-neutral-500'
-                        }`}
-                      >
-                        Estoque: {stock} {typeof prod.unit === 'string' && prod.unit ? prod.unit : 'un'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Large Quantity Stepper Buttons */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      id={`btn-minus-${prod.id}`}
-                      type="button"
-                      disabled={qty === 0}
-                      onClick={() => handleQtyChange(prod.id, -1)}
-                      className="w-10 h-10 rounded-xl bg-neutral-100 hover:bg-neutral-200 active:bg-neutral-300 text-neutral-800 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center font-bold text-lg transition active:scale-95 shadow-sm"
-                    >
-                      <Minus className="w-4 h-4" />
-                    </button>
-
-                    <div className="w-8 text-center font-extrabold text-base text-neutral-900">
-                      {qty}
-                    </div>
-
-                    <button
-                      id={`btn-plus-${prod.id}`}
-                      type="button"
-                      onClick={() => handleQtyChange(prod.id, 1)}
-                      className="w-10 h-10 rounded-xl bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white flex items-center justify-center font-bold text-lg transition active:scale-95 shadow-sm"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  </div>
+            {/* Produtos já adicionados à venda (fixados no topo) */}
+            {selectedFilteredProducts.length > 0 && (
+              <>
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-900 px-0.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Já adicionados ({selectedFilteredProducts.length})</span>
                 </div>
+                {selectedFilteredProducts.map(renderProductCard)}
 
-                {/* Overstock soft warning (does not block sale) */}
-                {isSelected && isOverStock && (
-                  <div className="mt-2 text-[11px] text-amber-800 bg-amber-100/80 px-2 py-1 rounded-lg font-medium flex items-center gap-1">
-                    <span>⚠️</span>
-                    <span>Qtd ({qty}) excede o estoque cadastrado ({stock} {typeof prod.unit === 'string' && prod.unit ? prod.unit : 'un'}). A venda será permitida normalmente.</span>
+                {/* Divisor visual se houver produtos não adicionados na lista */}
+                {unselectedFilteredProducts.length > 0 && (
+                  <div className="pt-2 pb-1">
+                    <div className="border-t border-neutral-200" />
                   </div>
                 )}
+              </>
+            )}
 
-                {/* If selected, show subtotal line */}
-                {isSelected && (
-                  <div className="mt-2 pt-2 border-t border-amber-200/60 flex items-center justify-between text-xs">
-                    <span className="text-amber-800 font-medium">Subtotal deste produto:</span>
-                    <span className="font-extrabold text-amber-950">
-                      {formatCurrency(qty * currentPrice)}
-                    </span>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+            {/* Demais produtos */}
+            {unselectedFilteredProducts.map(renderProductCard)}
+          </div>
       )}
       </div>
 

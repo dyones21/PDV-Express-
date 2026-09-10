@@ -1,12 +1,18 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Seller, Sale, Customer } from '@/types';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
 import { useNetworkSync } from '@/hooks/use-network-sync';
 import { useBusiness } from '@/context/BusinessContext';
 import { exportSalesCsv, exportDebtorsCsv } from '@/lib/export-csv';
-import { updateSeller, clearBusinessTestData } from '@/lib/db';
+import { 
+  updateSeller, 
+  clearBusinessTestData, 
+  subscribeBusiness, 
+  isCatalogSlugAvailable, 
+  updateBusinessSlug 
+} from '@/lib/db';
 import { ConfirmDialog } from './ConfirmDialog';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -32,7 +38,11 @@ import {
   LogOut,
   Trash2,
   Database,
-  RefreshCw
+  RefreshCw,
+  ShoppingBag,
+  Link2,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 import { SellerSwitchModal } from './SellerSwitchModal';
 
@@ -68,6 +78,78 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
   const [sellerToToggle, setSellerToToggle] = useState<{ seller: Seller; nextActive: boolean } | null>(null);
   const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+
+  // Link do Catálogo Virtual (Slug - Exclusivo para Dono)
+  const [catalogSlug, setCatalogSlug] = useState('');
+  const [savedSlug, setSavedSlug] = useState('');
+  const [slugError, setSlugError] = useState('');
+  const [slugSuccess, setSlugSuccess] = useState('');
+  const [isSavingSlug, setIsSavingSlug] = useState(false);
+  const [copiedCatalogUrl, setCopiedCatalogUrl] = useState(false);
+
+  useEffect(() => {
+    if (!businessId) return;
+    const unsub = subscribeBusiness(businessId, (b) => {
+      if (b?.slug) {
+        setSavedSlug(b.slug);
+        setCatalogSlug((prev) => (prev === '' ? b.slug || '' : prev));
+      }
+    });
+    return () => unsub();
+  }, [businessId]);
+
+  const sanitizeSlugInput = (val: string) => {
+    return val
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // remove acentos
+      .replace(/[^a-z0-9-]/g, '-') // troca espaços e símbolos inválidos por hífen
+      .replace(/-+/g, '-') // substitui hífens consecutivos por um só
+      .replace(/^-+/, ''); // remove hífen no início
+  };
+
+  const handleSaveCatalogSlug = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSlugError('');
+    setSlugSuccess('');
+
+    const formattedSlug = sanitizeSlugInput(catalogSlug).replace(/-+$/, '');
+
+    if (!formattedSlug || formattedSlug.length < 3) {
+      setSlugError('O link deve ter pelo menos 3 caracteres.');
+      return;
+    }
+
+    try {
+      setIsSavingSlug(true);
+
+      // Validação de duplicidade antes de salvar
+      const isAvailable = await isCatalogSlugAvailable(formattedSlug, businessId);
+      if (!isAvailable) {
+        setSlugError('Esse link já está em uso, escolha outro.');
+        return;
+      }
+
+      await updateBusinessSlug(businessId, formattedSlug);
+      setSavedSlug(formattedSlug);
+      setCatalogSlug(formattedSlug);
+      setSlugSuccess('Link do catálogo atualizado com sucesso!');
+      setTimeout(() => setSlugSuccess(''), 4000);
+    } catch (err: any) {
+      setSlugError('Erro ao salvar link do catálogo: ' + (err?.message || 'Tente novamente.'));
+    } finally {
+      setIsSavingSlug(false);
+    }
+  };
+
+  const handleCopyCatalogLink = () => {
+    if (typeof window === 'undefined') return;
+    const path = savedSlug ? `/catalogo/${savedSlug}` : `/catalogo/${businessId}`;
+    const fullUrl = `${window.location.origin}${path}`;
+    navigator.clipboard.writeText(fullUrl);
+    setCopiedCatalogUrl(true);
+    setTimeout(() => setCopiedCatalogUrl(false), 3000);
+  };
 
   const handleConfirmClearData = async () => {
     try {
@@ -331,6 +413,114 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
           </div>
         </div>
       </div>
+
+      {/* Link do Catálogo Virtual (Visível somente para o Dono) */}
+      {isOwner && (
+        <div className="bg-white rounded-2xl p-4 border border-neutral-200/80 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShoppingBag className="w-4 h-4 text-amber-700" />
+              <h3 className="text-sm font-bold text-neutral-900">Link do Catálogo</h3>
+            </div>
+            <span className="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full">
+              👑 Dono
+            </span>
+          </div>
+
+          <p className="text-xs text-neutral-600">
+            Defina um apelido curto e amigável para divulgar seu catálogo de produtos (ex: <strong>queijaria-serra</strong>). O link antigo por código continuará funcionando.
+          </p>
+
+          <form onSubmit={handleSaveCatalogSlug} className="space-y-2.5">
+            <div>
+              <label htmlFor="input-catalog-slug" className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                Endereço do Catálogo Público:
+              </label>
+              <div className="flex items-stretch rounded-xl border border-neutral-300 overflow-hidden focus-within:ring-2 focus-within:ring-amber-500 focus-within:border-amber-600 bg-white shadow-2xs">
+                <span className="bg-neutral-100 px-2.5 sm:px-3 py-2 text-[11px] sm:text-xs font-semibold text-neutral-600 border-r border-neutral-300 select-none flex items-center whitespace-nowrap">
+                  {typeof window !== 'undefined' ? `${window.location.host}/catalogo/` : 'seusite.com/catalogo/'}
+                </span>
+                <input
+                  id="input-catalog-slug"
+                  type="text"
+                  placeholder="apelido-do-negocio"
+                  value={catalogSlug}
+                  onChange={(e) => {
+                    setSlugError('');
+                    setCatalogSlug(sanitizeSlugInput(e.target.value));
+                  }}
+                  className="flex-1 min-w-0 px-2.5 sm:px-3 py-2 text-xs font-bold text-neutral-900 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {slugError && (
+              <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-1.5 animate-in fade-in">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{slugError}</span>
+              </div>
+            )}
+
+            {slugSuccess && (
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-center gap-1.5 animate-in fade-in">
+                <Check className="w-4 h-4 flex-shrink-0 text-emerald-600" />
+                <span>{slugSuccess}</span>
+              </div>
+            )}
+
+            <button
+              id="btn-save-catalog-slug"
+              type="submit"
+              disabled={isSavingSlug || !catalogSlug.trim()}
+              className="w-full py-2.5 bg-amber-700 hover:bg-amber-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs shadow-sm flex items-center justify-center gap-2 transition active:scale-98"
+            >
+              {isSavingSlug ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Verificando e salvando...</span>
+                </>
+              ) : (
+                <>
+                  <Link2 className="w-3.5 h-3.5" />
+                  <span>Salvar Link</span>
+                </>
+              )}
+            </button>
+          </form>
+
+          {savedSlug && (
+            <div className="pt-2 border-t border-neutral-100 flex items-center justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <span className="text-[11px] font-semibold text-neutral-500 block">Link Ativo:</span>
+                <span className="text-xs font-bold text-amber-800 truncate block">
+                  /catalogo/{savedSlug}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <button
+                  type="button"
+                  id="btn-copy-catalog-slug-link"
+                  onClick={handleCopyCatalogLink}
+                  className="px-2.5 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-lg text-xs font-semibold flex items-center gap-1 transition"
+                >
+                  <Copy className="w-3.5 h-3.5 text-neutral-500" />
+                  <span>{copiedCatalogUrl ? 'Copiado!' : 'Copiar'}</span>
+                </button>
+                <a
+                  id="btn-open-catalog-slug-link"
+                  href={`/catalogo/${savedSlug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-lg transition"
+                  title="Abrir catálogo"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Backup & Exportação de Dados */}
       <div className="bg-white rounded-2xl p-4 border border-neutral-200/80 shadow-sm space-y-3">

@@ -5,6 +5,7 @@ export interface Business {
   ownerUid?: string;
   createdAt: string;
   active?: boolean;
+  slug?: string;
 }
 
 export interface Seller {
@@ -58,6 +59,7 @@ export interface PublicCatalogItem {
 export interface PublicCatalog {
   businessName: string;
   active: boolean;
+  slug?: string;
   updatedAt?: string;
 }
 

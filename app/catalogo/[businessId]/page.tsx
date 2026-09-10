@@ -45,10 +45,7 @@ export default function PublicCatalogPage() {
       setIsNotFound(false);
 
       try {
-        const [catalogInfo, catalogItems] = await Promise.all([
-          getPublicCatalog(businessId),
-          getPublicCatalogItems(businessId),
-        ]);
+        const catalogInfo = await getPublicCatalog(businessId);
 
         if (!isMounted) return;
 
@@ -57,6 +54,11 @@ export default function PublicCatalogPage() {
         } else {
           setBusinessName(catalogInfo.businessName || 'Catálogo Virtual');
           setIsCatalogActive(true);
+
+          // Carrega os itens a partir do ID real do negócio
+          const catalogItems = await getPublicCatalogItems(catalogInfo.businessId);
+          if (!isMounted) return;
+
           // Sort alphabetically
           const sorted = [...catalogItems].sort((a, b) => 
             (a.name || '').localeCompare(b.name || '', 'pt-BR')

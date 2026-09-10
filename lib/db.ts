@@ -15,6 +15,7 @@ import {
   writeBatch,
   deleteDoc,
   where,
+  limit,
   runTransaction,
 } from 'firebase/firestore';
 import { db, DEFAULT_BUSINESS_ID, ensureAuthSession } from './firebase';
@@ -132,6 +133,52 @@ export function cleanUndefined<T extends Record<string, any>>(obj: T): T {
 // Helpers to get sub-collections for a specific business
 export function getBusinessRef(businessId = DEFAULT_BUSINESS_ID) {
   return doc(db, 'businesses', businessId);
+}
+
+export function subscribeBusiness(
+  businessId = DEFAULT_BUSINESS_ID,
+  callback: (business: Business | null) => void
+) {
+  const bRef = getBusinessRef(businessId);
+  return onSnapshot(
+    bRef,
+    (snap) => {
+      if (!snap.exists()) {
+        callback(null);
+        return;
+      }
+      const data = sanitizeDocData(snap.data());
+      callback({
+        id: snap.id,
+        ...data,
+        name: sanitizeString(data.name, 'Meu Negócio'),
+        createdAt: sanitizeString(data.createdAt, ''),
+        active: data.active !== false,
+        slug: typeof data.slug === 'string' && data.slug ? data.slug : undefined,
+      } as Business);
+    },
+    (err) => console.warn('subscribeBusiness error:', err)
+  );
+}
+
+export async function getBusiness(businessId = DEFAULT_BUSINESS_ID): Promise<Business | null> {
+  try {
+    const bRef = getBusinessRef(businessId);
+    const snap = await getDoc(bRef);
+    if (!snap.exists()) return null;
+    const data = sanitizeDocData(snap.data());
+    return {
+      id: snap.id,
+      ...data,
+      name: sanitizeString(data.name, 'Meu Negócio'),
+      createdAt: sanitizeString(data.createdAt, ''),
+      active: data.active !== false,
+      slug: typeof data.slug === 'string' && data.slug ? data.slug : undefined,
+    } as Business;
+  } catch (err) {
+    console.warn('getBusiness error:', err);
+    return null;
+  }
 }
 
 export function getCustomersCol(businessId = DEFAULT_BUSINESS_ID) {
@@ -535,6 +582,7 @@ export async function syncPublicCatalogItem(
         await setDoc(publicCatalogRef, cleanUndefined({
           businessName,
           active: true,
+          slug: typeof bSnap.data()?.slug === 'string' ? bSnap.data()?.slug : undefined,
           updatedAt: new Date().toISOString(),
         }));
       }
@@ -651,18 +699,109 @@ export async function restockProduct(
   }
 }
 
-// ----------------- PUBLIC CATALOG READ HELPERS -----------------
+// ----------------- PUBLIC CATALOG HELPERS -----------------
 
-export async function getPublicCatalog(businessId: string): Promise<{ businessName: string; active: boolean } | null> {
+/**
+ * Verifica se um determinado slug está disponível para uso ou se já pertence a outro negócio.
+ */
+export async function isCatalogSlugAvailable(
+  slug: string,
+  currentBusinessId: string
+): Promise<boolean> {
   try {
-    const catalogRef = doc(db, 'publicCatalog', businessId);
-    const snap = await getDoc(catalogRef);
-    if (!snap.exists()) return null;
-    const data = sanitizeDocData(snap.data());
-    return {
-      businessName: sanitizeString(data.businessName, 'Catálogo de Produtos'),
-      active: data.active !== false,
-    };
+    const cleanSlug = slug.trim().toLowerCase();
+    const q = query(
+      collection(db, 'publicCatalog'),
+      where('slug', '==', cleanSlug),
+      limit(1)
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) return true;
+    // Se o documento retornado for do próprio negócio atual, é o mesmo slug já gravado
+    return snap.docs[0].id === currentBusinessId;
+  } catch (err) {
+    console.warn('isCatalogSlugAvailable error:', err);
+    return true;
+  }
+}
+
+/**
+ * Atualiza o slug do catálogo tanto em businesses/{businessId} quanto em publicCatalog/{businessId}.
+ */
+export async function updateBusinessSlug(
+  businessId = DEFAULT_BUSINESS_ID,
+  slug: string
+): Promise<void> {
+  await ensureAuthSession();
+  const cleanSlug = slug.trim().toLowerCase();
+
+  // 1. Gravar campo slug em businesses/{businessId}
+  const bRef = getBusinessRef(businessId);
+  await updateDoc(bRef, { slug: cleanSlug });
+
+  // 2. Replicar esse campo no documento publicCatalog/{businessId} correspondente
+  const pcRef = doc(db, 'publicCatalog', businessId);
+  const pcSnap = await getDoc(pcRef);
+  if (pcSnap.exists()) {
+    await updateDoc(pcRef, {
+      slug: cleanSlug,
+      updatedAt: new Date().toISOString(),
+    });
+  } else {
+    const bSnap = await getDoc(bRef);
+    const bName = bSnap.exists() ? sanitizeString(bSnap.data()?.name, 'Meu Catálogo') : 'Meu Catálogo';
+    await setDoc(pcRef, cleanUndefined({
+      businessName: bName,
+      active: true,
+      slug: cleanSlug,
+      updatedAt: new Date().toISOString(),
+    }));
+  }
+}
+
+export async function getPublicCatalog(idOrSlug: string): Promise<{
+  businessId: string;
+  businessName: string;
+  active: boolean;
+  slug?: string;
+} | null> {
+  try {
+    if (!idOrSlug) return null;
+    const cleanParam = idOrSlug.trim();
+
+    // 1. Primeiro tentar getDoc direto em publicCatalog/{idOrSlug} (cobre o link antigo por businessId sem custo extra de consulta)
+    const directRef = doc(db, 'publicCatalog', cleanParam);
+    const directSnap = await getDoc(directRef);
+    if (directSnap.exists()) {
+      const data = sanitizeDocData(directSnap.data());
+      return {
+        businessId: directSnap.id,
+        businessName: sanitizeString(data.businessName, 'Catálogo de Produtos'),
+        active: data.active !== false,
+        slug: typeof data.slug === 'string' && data.slug ? data.slug : undefined,
+      };
+    }
+
+    // 2. Se não encontrar, fazer uma consulta (query where 'slug' == idOrSlug, limit 1) na coleção publicCatalog
+    const q = query(
+      collection(db, 'publicCatalog'),
+      where('slug', '==', cleanParam.toLowerCase()),
+      limit(1)
+    );
+    const querySnap = await getDocs(q);
+    if (!querySnap.empty) {
+      const docSnap = querySnap.docs[0];
+      const data = sanitizeDocData(docSnap.data());
+      return {
+        businessId: docSnap.id,
+        businessName: sanitizeString(data.businessName, 'Catálogo de Produtos'),
+        active: data.active !== false,
+        slug: typeof data.slug === 'string' && data.slug ? data.slug : undefined,
+      };
+    }
+
+    // 3. Se nenhum dos dois encontrar, retornar null
+    return null;
   } catch (err) {
     console.warn('Erro ao carregar catálogo público:', err);
     return null;

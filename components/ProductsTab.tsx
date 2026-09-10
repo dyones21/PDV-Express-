@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Product } from '@/types';
 import { formatCurrency, formatCurrencyInput, parseCurrencyToNumber } from '@/lib/format';
-import { addProduct, updateProduct, restockProduct } from '@/lib/db';
+import { addProduct, updateProduct, restockProduct, subscribeBusiness } from '@/lib/db';
 import { useNetworkSync } from '@/hooks/use-network-sync';
 import { useBusiness } from '@/context/BusinessContext';
 import { storage, db } from '@/lib/firebase';
@@ -92,9 +92,18 @@ interface ProductsTabProps {
 export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
   const { businessId } = useBusiness();
   const { isOnline } = useNetworkSync();
+  const [businessSlug, setBusinessSlug] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
   const [restockSyncNotice, setRestockSyncNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!businessId) return;
+    const unsub = subscribeBusiness(businessId, (b) => {
+      setBusinessSlug(b?.slug || '');
+    });
+    return () => unsub();
+  }, [businessId]);
 
   useEffect(() => {
     if (!restockSyncNotice) return;
@@ -474,7 +483,7 @@ export function ProductsTab({ products, onOpenNewSale }: ProductsTabProps) {
         <div className="flex items-center gap-2">
           <a
             id="btn-open-virtual-catalog"
-            href={`/catalogo/${businessId}`}
+            href={`/catalogo/${businessSlug || businessId}`}
             target="_blank"
             rel="noopener noreferrer"
             className="py-2 px-2.5 bg-neutral-100 hover:bg-neutral-200 active:bg-neutral-300 text-neutral-800 font-bold text-xs rounded-xl shadow-2xs flex items-center gap-1.5 transition active:scale-95 border border-neutral-300"
