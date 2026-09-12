@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Customer, Sale } from '@/types';
+import { Customer, Sale, PriceTable } from '@/types';
 import { formatCurrency, formatDateBr, getTodayDateString, formatPhone, formatCpf } from '@/lib/format';
 import { addCustomer, updateCustomer } from '@/lib/db';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -23,17 +23,19 @@ import {
   AlertTriangle,
   UserCheck,
   UserX,
-  Power
+  Power,
+  Tag
 } from 'lucide-react';
 
 interface CustomersTabProps {
   customers: Customer[];
   sales: Sale[];
+  priceTables?: PriceTable[];
   onOpenSaleDetails: (sale: Sale) => void;
   initialSearch?: string;
 }
 
-export function CustomersTab({ customers, sales, onOpenSaleDetails, initialSearch = '' }: CustomersTabProps) {
+export function CustomersTab({ customers, sales, priceTables = [], onOpenSaleDetails, initialSearch = '' }: CustomersTabProps) {
   const { businessId } = useBusiness();
   const [searchTerm, setSearchTerm] = useState(initialSearch);
   const [prevInitialSearch, setPrevInitialSearch] = useState(initialSearch);
@@ -55,6 +57,7 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails, initialSearc
   const [address, setAddress] = useState('');
   const [referencePoint, setReferencePoint] = useState('');
   const [nextVisitReminder, setNextVisitReminder] = useState('');
+  const [priceTableId, setPriceTableId] = useState('');
   const [active, setActive] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -79,6 +82,7 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails, initialSearc
     setAddress('');
     setReferencePoint('');
     setNextVisitReminder('');
+    setPriceTableId('');
     setActive(true);
     setIsNewModalOpen(true);
   };
@@ -91,6 +95,7 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails, initialSearc
     setAddress(customer.address || '');
     setReferencePoint(customer.referencePoint || '');
     setNextVisitReminder(customer.nextVisitReminder || '');
+    setPriceTableId(customer.priceTableId || '');
     setActive(customer.active !== false);
   };
 
@@ -126,6 +131,7 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails, initialSearc
           address: address.trim() || undefined,
           referencePoint: referencePoint.trim() || undefined,
           nextVisitReminder: nextVisitReminder.trim() || undefined,
+          priceTableId: priceTableId || undefined,
           active,
         });
         setEditingCustomer(null);
@@ -137,6 +143,7 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails, initialSearc
           address: address.trim() || undefined,
           referencePoint: referencePoint.trim() || undefined,
           nextVisitReminder: nextVisitReminder.trim() || undefined,
+          priceTableId: priceTableId || undefined,
           active: true,
         });
         setIsNewModalOpen(false);
@@ -239,6 +246,25 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails, initialSearc
                           Deve {formatCurrency(customer.totalDebt)}
                         </span>
                       )}
+
+                      {customer.priceTableId && (() => {
+                        const table = priceTables.find((pt) => pt.id === customer.priceTableId);
+                        if (!table) return null;
+                        const isTableInactive = table.active === false;
+                        return (
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                              isTableInactive
+                                ? 'text-neutral-500 bg-neutral-100 line-through'
+                                : 'text-emerald-800 bg-emerald-100 border border-emerald-200'
+                            }`}
+                            title={isTableInactive ? 'Tabela inativa (desconto pausado)' : `Desconto de ${table.discountPercent}%`}
+                          >
+                            <Tag className="w-2.5 h-2.5" />
+                            <span>{table.name} (-{table.discountPercent}%)</span>
+                          </span>
+                        );
+                      })()}
                     </div>
 
                     {/* Visit Reminder Tag */}
@@ -450,6 +476,31 @@ export function CustomersTab({ customers, sales, onOpenSaleDetails, initialSearc
                   className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500 focus:outline-none"
                 />
               </div>
+
+              {/* Tabela de Preço Vinculada */}
+              {priceTables.length > 0 && (
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                    Tabela de Preço (Desconto Automático)
+                  </label>
+                  <select
+                    id="select-customer-price-table"
+                    value={priceTableId}
+                    onChange={(e) => setPriceTableId(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-neutral-800 font-medium"
+                  >
+                    <option value="">Nenhuma (Preço normal padrão)</option>
+                    {priceTables.map((table) => (
+                      <option key={table.id} value={table.id}>
+                        {table.name} (-{table.discountPercent}%){table.active === false ? ' [Inativa]' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-neutral-500 mt-1">
+                    Ao selecionar este cliente na venda, o desconto será aplicado automaticamente em todos os produtos.
+                  </p>
+                </div>
+              )}
 
               {/* Lembrete de Próxima Visita */}
               <div>

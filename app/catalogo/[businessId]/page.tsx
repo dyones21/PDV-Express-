@@ -13,7 +13,10 @@ import {
   Check, 
   AlertCircle,
   Package,
-  RefreshCw
+  RefreshCw,
+  Plus,
+  Minus,
+  MessageSquare
 } from 'lucide-react';
 
 export default function PublicCatalogPage() {
@@ -23,8 +26,10 @@ export default function PublicCatalogPage() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [businessName, setBusinessName] = useState<string>('');
+  const [orderWhatsapp, setOrderWhatsapp] = useState<string>('');
   const [isCatalogActive, setIsCatalogActive] = useState(true);
   const [items, setItems] = useState<PublicCatalogItem[]>([]);
+  const [cart, setCart] = useState<Record<string, number>>({});
   const [searchTerm, setSearchTerm] = useState('');
   const [isNotFound, setIsNotFound] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -53,14 +58,20 @@ export default function PublicCatalogPage() {
           setIsNotFound(true);
         } else {
           setBusinessName(catalogInfo.businessName || 'Catálogo Virtual');
+          setOrderWhatsapp(catalogInfo.orderWhatsapp || '');
           setIsCatalogActive(true);
 
           // Carrega os itens a partir do ID real do negócio
           const catalogItems = await getPublicCatalogItems(catalogInfo.businessId);
           if (!isMounted) return;
 
+          // Filtra produtos com estoque zerado ou inativos (garantia dupla na vitrine)
+          const availableItems = catalogItems.filter(
+            (item) => item.active !== false && item.inStock !== false
+          );
+
           // Sort alphabetically
-          const sorted = [...catalogItems].sort((a, b) => 
+          const sorted = [...availableItems].sort((a, b) => 
             (a.name || '').localeCompare(b.name || '', 'pt-BR')
           );
           setItems(sorted);
@@ -105,6 +116,53 @@ export default function PublicCatalogPage() {
     } catch {
       // Ignorar falha de clipboard
     }
+  };
+
+  const hasOrderWhatsapp = Boolean(
+    orderWhatsapp && orderWhatsapp.replace(/\D/g, '').length >= 10
+  );
+
+  const handleQtyChange = (productId: string, delta: number) => {
+    setCart((prev) => {
+      const current = prev[productId] || 0;
+      const next = Math.max(0, current + delta);
+      if (next === 0) {
+        const copy = { ...prev };
+        delete copy[productId];
+        return copy;
+      }
+      return { ...prev, [productId]: next };
+    });
+  };
+
+  const cartList = items
+    .filter((item) => (cart[item.id] || 0) > 0)
+    .map((item) => {
+      const qty = cart[item.id] || 0;
+      return {
+        ...item,
+        quantity: qty,
+        subtotal: qty * item.price,
+      };
+    });
+
+  const totalCartItemsCount = cartList.reduce((acc, curr) => acc + curr.quantity, 0);
+  const totalCartPrice = cartList.reduce((acc, curr) => acc + curr.subtotal, 0);
+
+  const handleCheckoutWhatsapp = () => {
+    if (!hasOrderWhatsapp || cartList.length === 0) return;
+
+    const rawDigits = orderWhatsapp.replace(/\D/g, '');
+    const cleanDigits = rawDigits.startsWith('55') && rawDigits.length > 11 ? rawDigits.slice(2) : rawDigits;
+
+    let message = `*Pedido - ${businessName || 'Catálogo Virtual'}*\n\n`;
+    cartList.forEach((item) => {
+      message += `• ${item.quantity}x ${item.name} — ${formatCurrency(item.price)} = ${formatCurrency(item.subtotal)}\n`;
+    });
+    message += `\n*Total: ${formatCurrency(totalCartPrice)}*`;
+
+    const url = `https://wa.me/55${cleanDigits}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const filteredItems = items.filter((item) => {
@@ -155,7 +213,7 @@ export default function PublicCatalogPage() {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 space-y-6">
+      <main className={`flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 space-y-6 ${hasOrderWhatsapp && totalCartItemsCount > 0 ? 'pb-24 sm:pb-28' : ''}`}>
         {isLoading ? (
           <div className="space-y-4">
             <div className="h-10 bg-neutral-200/70 rounded-xl animate-pulse" />
@@ -239,54 +297,120 @@ export default function PublicCatalogPage() {
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
-                {filteredItems.map((item) => (
-                  <article
-                    key={item.id}
-                    id={`catalog-card-${item.id}`}
-                    className="bg-white rounded-2xl border border-neutral-200/90 overflow-hidden shadow-2xs hover:shadow-sm transition flex flex-col"
-                  >
-                    {/* Photo Container */}
-                    <div className="aspect-square bg-neutral-100 relative overflow-hidden flex items-center justify-center border-b border-neutral-100">
-                      {item.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={item.imageUrl}
-                          alt={item.name}
-                          loading="lazy"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center text-neutral-300 p-4">
-                          <Package className="w-10 h-10 stroke-[1.5]" />
-                          <span className="text-[10px] font-semibold text-neutral-400 mt-1">Sem foto</span>
+                {filteredItems.map((item) => {
+                  const qty = cart[item.id] || 0;
+                  return (
+                    <article
+                      key={item.id}
+                      id={`catalog-card-${item.id}`}
+                      className="bg-white rounded-2xl border border-neutral-200/90 overflow-hidden shadow-2xs hover:shadow-sm transition flex flex-col"
+                    >
+                      {/* Photo Container */}
+                      <div className="aspect-square bg-neutral-100 relative overflow-hidden flex items-center justify-center border-b border-neutral-100">
+                        {item.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={item.imageUrl}
+                            alt={item.name}
+                            loading="lazy"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center text-neutral-300 p-4">
+                            <Package className="w-10 h-10 stroke-[1.5]" />
+                            <span className="text-[10px] font-semibold text-neutral-400 mt-1">Sem foto</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Content */}
+                      <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
+                        <div>
+                          <h2 className="text-sm font-bold text-neutral-900 leading-snug line-clamp-2">
+                            {item.name}
+                          </h2>
+                          <span className="text-[11px] font-medium text-neutral-500">
+                            {item.unit ? `Por ${item.unit}` : 'Unidade'}
+                          </span>
                         </div>
-                      )}
-                    </div>
 
-                    {/* Content */}
-                    <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
-                      <div>
-                        <h2 className="text-sm font-bold text-neutral-900 leading-snug line-clamp-2">
-                          {item.name}
-                        </h2>
-                        <span className="text-[11px] font-medium text-neutral-500">
-                          {item.unit ? `Por ${item.unit}` : 'Unidade'}
-                        </span>
-                      </div>
+                        <div className="pt-1 border-t border-neutral-100 flex items-center justify-between gap-1">
+                          <span className="text-base font-extrabold text-amber-900">
+                            {formatCurrency(item.price)}
+                          </span>
 
-                      <div className="pt-1 border-t border-neutral-100 flex items-baseline justify-between">
-                        <span className="text-base font-extrabold text-amber-900">
-                          {formatCurrency(item.price)}
-                        </span>
+                          {hasOrderWhatsapp && (
+                            <div className="flex items-center gap-1 bg-neutral-50 p-1 rounded-xl border border-neutral-200">
+                              <button
+                                type="button"
+                                id={`btn-minus-${item.id}`}
+                                disabled={qty === 0}
+                                onClick={() => handleQtyChange(item.id, -1)}
+                                className="w-6 h-6 rounded-lg bg-white hover:bg-neutral-100 active:bg-neutral-200 text-neutral-800 disabled:opacity-20 disabled:pointer-events-none flex items-center justify-center font-bold text-xs border border-neutral-200 transition active:scale-95 shadow-2xs"
+                                aria-label="Diminuir quantidade"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+
+                              <span className="w-4 text-center font-extrabold text-xs text-neutral-900">
+                                {qty}
+                              </span>
+
+                              <button
+                                type="button"
+                                id={`btn-plus-${item.id}`}
+                                onClick={() => handleQtyChange(item.id, 1)}
+                                className="w-6 h-6 rounded-lg bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white flex items-center justify-center font-bold text-xs transition active:scale-95 shadow-2xs"
+                                aria-label="Aumentar quantidade"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </article>
-                ))}
+                    </article>
+                  );
+                })}
               </div>
             )}
           </>
         )}
       </main>
+
+      {/* Floating Bottom Cart Bar */}
+      {hasOrderWhatsapp && totalCartItemsCount > 0 && (
+        <aside
+          id="catalog-cart-bar"
+          className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-neutral-200 p-3 sm:p-4 shadow-xl transition-all"
+        >
+          <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-xs text-neutral-600 font-medium">
+                <ShoppingBag className="w-4 h-4 text-amber-700 flex-shrink-0" />
+                <span>
+                  {totalCartItemsCount === 1
+                    ? '1 item no pedido'
+                    : `${totalCartItemsCount} itens no pedido`}
+                </span>
+              </div>
+              <div className="text-base sm:text-lg font-extrabold text-neutral-900 leading-tight">
+                {formatCurrency(totalCartPrice)}
+              </div>
+            </div>
+
+            <button
+              id="btn-checkout-whatsapp"
+              type="button"
+              onClick={handleCheckoutWhatsapp}
+              className="px-4 sm:px-6 py-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md hover:shadow-lg transition active:scale-98 flex items-center gap-2 flex-shrink-0"
+            >
+              <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span>Finalizar Pedido no WhatsApp</span>
+            </button>
+          </div>
+        </aside>
+      )}
 
       {/* Clean Public Footer */}
       <footer className="border-t border-neutral-200 bg-white py-6 px-4 text-center text-xs text-neutral-400 font-medium">

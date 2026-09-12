@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Customer, Product, Sale, Payment, Seller } from '@/types';
+import { Customer, Product, Sale, Payment, Seller, PriceTable } from '@/types';
 import { 
   subscribeCustomers, 
   subscribeProducts, 
   subscribeSales, 
   subscribePayments, 
-  subscribeSellers 
+  subscribeSellers,
+  subscribePriceTables
 } from '@/lib/db';
 import { SellerAuthProvider } from '@/hooks/use-seller-auth';
 import { Header } from '@/components/Header';
@@ -45,6 +46,7 @@ function MainAppContent() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [sellers, setSellers] = useState<Seller[]>([]);
+  const [priceTables, setPriceTables] = useState<PriceTable[]>([]);
   
   const [hasPendingWrites, setHasPendingWrites] = useState(false);
   const [selectedSaleForDetails, setSelectedSaleForDetails] = useState<Sale | null>(null);
@@ -82,12 +84,18 @@ function MainAppContent() {
       setSellers(list);
     });
 
+    // 6. Subscribe Price Tables
+    const unsubPriceTables = subscribePriceTables(businessId, (list) => {
+      setPriceTables(list);
+    });
+
     return () => {
       unsubCust();
       unsubProd();
       unsubSales();
       unsubPay();
       unsubSellers();
+      unsubPriceTables();
     };
   }, [businessId]);
 
@@ -120,6 +128,7 @@ function MainAppContent() {
           <NewSaleTab
             customers={customers}
             products={products}
+            priceTables={priceTables}
             onSaleCompleted={() => setActiveTab('hoje')}
             onSearchFocusChange={setIsKeyboardActive}
           />
@@ -154,6 +163,7 @@ function MainAppContent() {
           <CustomersTab
             customers={customers}
             sales={sales}
+            priceTables={priceTables}
             onOpenSaleDetails={(sale) => setSelectedSaleForDetails(sale)}
             initialSearch={customerSearchTerm}
           />
@@ -173,6 +183,7 @@ function MainAppContent() {
             sellers={sellers}
             sales={sales}
             customers={customers}
+            priceTables={priceTables}
             onOpenNewSale={() => setActiveTab('nova-venda')}
           />
         )}

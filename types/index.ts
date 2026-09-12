@@ -6,6 +6,7 @@ export interface Business {
   createdAt: string;
   active?: boolean;
   slug?: string;
+  orderWhatsapp?: string;
 }
 
 export interface Seller {
@@ -26,12 +27,20 @@ export interface Customer {
   address?: string;
   referencePoint?: string;
   active?: boolean;
+  priceTableId?: string;
   nextVisitReminder?: string; // YYYY-MM-DD
   totalDebt?: number;
   totalPurchased?: number;
   lastPurchaseDate?: string;
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface PriceTable {
+  id: string;
+  name: string;
+  discountPercent: number; // 0 a 100
+  active: boolean;
 }
 
 export interface Product {
@@ -54,12 +63,14 @@ export interface PublicCatalogItem {
   unit: string;
   imageUrl?: string;
   active: boolean;
+  inStock?: boolean;
 }
 
 export interface PublicCatalog {
   businessName: string;
   active: boolean;
   slug?: string;
+  orderWhatsapp?: string;
   updatedAt?: string;
 }
 

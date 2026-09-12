@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { Customer, Product, SaleItem, PaymentStatus, PaymentMethod } from '@/types';
+import { Customer, Product, SaleItem, PaymentStatus, PaymentMethod, PriceTable } from '@/types';
 import { formatCurrency, formatCurrencyInput, parseCurrencyToNumber, formatPhone, getTodayDateString, formatDateBr } from '@/lib/format';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
 import { useNetworkSync } from '@/hooks/use-network-sync';
@@ -25,16 +25,18 @@ import {
   X,
   CalendarClock,
   AlertTriangle,
+  Tag,
 } from 'lucide-react';
 
 interface NewSaleTabProps {
   customers: Customer[];
   products: Product[];
+  priceTables?: PriceTable[];
   onSaleCompleted: () => void;
   onSearchFocusChange?: (focused: boolean) => void;
 }
 
-export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocusChange }: NewSaleTabProps) {
+export function NewSaleTab({ customers, products, priceTables = [], onSaleCompleted, onSearchFocusChange }: NewSaleTabProps) {
   const { businessId } = useBusiness();
   const { activeSeller } = useSellerAuth();
   const { isOnline } = useNetworkSync();
@@ -84,6 +86,25 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
   const [customDateInput, setCustomDateInput] = useState('');
   const [isSavingReminder, setIsSavingReminder] = useState(false);
 
+  const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
+
+  // Tabela de preço ativa vinculada ao cliente selecionado (se houver e não for cliente avulso)
+  const activePriceTable = !isAnonymous && selectedCustomer?.priceTableId
+    ? priceTables.find((pt) => pt.id === selectedCustomer.priceTableId && pt.active !== false)
+    : undefined;
+
+  // Helper para obter o preço unitário efetivo do produto (respeitando customPriceOverrides com prioridade)
+  const getProductUnitPrice = (prod: Product): number => {
+    if (customPriceOverrides[prod.id] !== undefined) {
+      return customPriceOverrides[prod.id];
+    }
+    if (activePriceTable && activePriceTable.discountPercent > 0) {
+      const discountFactor = (100 - activePriceTable.discountPercent) / 100;
+      return Math.round(prod.price * discountFactor * 100) / 100;
+    }
+    return prod.price;
+  };
+
   // Filtered active products
   const activeProducts = products.filter((p) => p.active !== false);
 
@@ -110,7 +131,7 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
   activeProducts.forEach((p) => {
     const qty = quantities[p.id] || 0;
     if (qty > 0) {
-      const unitPrice = customPriceOverrides[p.id] !== undefined ? customPriceOverrides[p.id] : p.price;
+      const unitPrice = getProductUnitPrice(p);
       const subtotal = qty * unitPrice;
       calculatedTotal += subtotal;
       selectedItems.push({
@@ -134,7 +155,8 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
 
   const renderProductCard = (prod: Product) => {
     const qty = quantities[prod.id] || 0;
-    const currentPrice = customPriceOverrides[prod.id] !== undefined ? customPriceOverrides[prod.id] : prod.price;
+    const currentPrice = getProductUnitPrice(prod);
+    const hasTableDiscount = activePriceTable && activePriceTable.discountPercent > 0 && customPriceOverrides[prod.id] === undefined;
     const isSelected = qty > 0;
     const stock = typeof prod.stockQuantity === 'number' ? prod.stockQuantity : 0;
     const isOverStock = qty > stock;
@@ -159,6 +181,11 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
               <span className="font-semibold text-amber-900">
                 {formatCurrency(currentPrice)}
               </span>
+              {hasTableDiscount && (
+                <span className="text-[10px] text-neutral-400 line-through">
+                  {formatCurrency(prod.price)}
+                </span>
+              )}
               <span className="text-neutral-400">/ {typeof prod.unit === 'string' && prod.unit ? prod.unit : 'peça'}</span>
               <span className="text-neutral-300">•</span>
               <span
@@ -246,8 +273,6 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
       alert('Erro ao cadastrar cliente: ' + err.message);
     }
   };
-
-  const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
 
   // Filtered active customers for search (inactive customers should not appear in new sale selection)
   const activeCustomers = customers.filter((c) => c.active !== false);
@@ -658,6 +683,12 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
               <div className="text-[10px] text-neutral-500 truncate">
                 {!isAnonymous && selectedCustomer?.referencePoint ? selectedCustomer.referencePoint : 'Cadastrado'}
               </div>
+              {!isAnonymous && activePriceTable && (
+                <div className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-100/90 px-1.5 py-0.2 rounded border border-emerald-200">
+                  <Tag className="w-2.5 h-2.5" />
+                  <span>{activePriceTable.name} (-{activePriceTable.discountPercent}%)</span>
+                </div>
+              )}
             </div>
           </button>
         </div>
@@ -709,6 +740,16 @@ export function NewSaleTab({ customers, products, onSaleCompleted, onSearchFocus
                             {c.referencePoint || c.address}
                           </div>
                         )}
+                        {c.priceTableId && (() => {
+                          const table = priceTables.find((pt) => pt.id === c.priceTableId && pt.active !== false);
+                          if (!table) return null;
+                          return (
+                            <div className="text-[10px] text-emerald-700 font-medium flex items-center gap-1 mt-0.5">
+                              <Tag className="w-2.5 h-2.5 text-emerald-600" />
+                              <span>{table.name} (-{table.discountPercent}%)</span>
+                            </div>
+                          );
+                        })()}
                       </div>
                       <div className="text-right flex-shrink-0">
                         {(c.totalDebt || 0) > 0 ? (

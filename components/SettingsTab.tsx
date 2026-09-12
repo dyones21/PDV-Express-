@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Seller, Sale, Customer } from '@/types';
+import { Seller, Sale, Customer, PriceTable } from '@/types';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
 import { useNetworkSync } from '@/hooks/use-network-sync';
 import { useBusiness } from '@/context/BusinessContext';
@@ -11,8 +11,12 @@ import {
   clearBusinessTestData, 
   subscribeBusiness, 
   isCatalogSlugAvailable, 
-  updateBusinessSlug 
+  updateBusinessSlug,
+  updateBusinessOrderWhatsapp,
+  addPriceTable,
+  updatePriceTable
 } from '@/lib/db';
+import { formatPhone } from '@/lib/format';
 import { ConfirmDialog } from './ConfirmDialog';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -42,7 +46,10 @@ import {
   ShoppingBag,
   Link2,
   Copy,
-  ExternalLink
+  ExternalLink,
+  MessageSquare,
+  Tag,
+  Percent
 } from 'lucide-react';
 import { SellerSwitchModal } from './SellerSwitchModal';
 
@@ -50,10 +57,11 @@ interface SettingsTabProps {
   sellers: Seller[];
   sales?: Sale[];
   customers?: Customer[];
+  priceTables?: PriceTable[];
   onOpenNewSale?: () => void;
 }
 
-export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTabProps) {
+export function SettingsTab({ sellers, sales = [], customers = [], priceTables = [] }: SettingsTabProps) {
   const { activeSeller, isOwner, createSeller } = useSellerAuth();
   const { isOnline, canInstallPwa, promptInstall } = useNetworkSync();
   const { businessId } = useBusiness();
@@ -79,6 +87,14 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
   const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
 
+  // Tabelas de Preço (Exclusivo para Dono)
+  const [isAddPriceTableOpen, setIsAddPriceTableOpen] = useState(false);
+  const [newTableName, setNewTableName] = useState('');
+  const [newTableDiscount, setNewTableDiscount] = useState('');
+  const [tableFormError, setTableFormError] = useState('');
+  const [isSubmittingTable, setIsSubmittingTable] = useState(false);
+  const [tableToToggle, setTableToToggle] = useState<{ table: PriceTable; nextActive: boolean } | null>(null);
+
   // Link do Catálogo Virtual (Slug - Exclusivo para Dono)
   const [catalogSlug, setCatalogSlug] = useState('');
   const [savedSlug, setSavedSlug] = useState('');
@@ -87,6 +103,13 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
   const [isSavingSlug, setIsSavingSlug] = useState(false);
   const [copiedCatalogUrl, setCopiedCatalogUrl] = useState(false);
 
+  // WhatsApp para Pedidos do Catálogo (Exclusivo para Dono)
+  const [orderWhatsapp, setOrderWhatsapp] = useState('');
+  const [savedWhatsapp, setSavedWhatsapp] = useState('');
+  const [whatsappError, setWhatsappError] = useState('');
+  const [whatsappSuccess, setWhatsappSuccess] = useState('');
+  const [isSavingWhatsapp, setIsSavingWhatsapp] = useState(false);
+
   useEffect(() => {
     if (!businessId) return;
     const unsub = subscribeBusiness(businessId, (b) => {
@@ -94,9 +117,40 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
         setSavedSlug(b.slug);
         setCatalogSlug((prev) => (prev === '' ? b.slug || '' : prev));
       }
+      if (b?.orderWhatsapp) {
+        setSavedWhatsapp(b.orderWhatsapp);
+        setOrderWhatsapp((prev) => (prev === '' ? formatPhone(b.orderWhatsapp) : prev));
+      }
     });
     return () => unsub();
   }, [businessId]);
+
+  const handleSaveOrderWhatsapp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setWhatsappError('');
+    setWhatsappSuccess('');
+
+    const rawDigits = orderWhatsapp.replace(/\D/g, '');
+
+    // Se o dono preencher, validar que tem pelo menos 10 dígitos (DDD + número)
+    if (rawDigits && rawDigits.length < 10) {
+      setWhatsappError('Informe um telefone com DDD válido (pelo menos 10 dígitos).');
+      return;
+    }
+
+    try {
+      setIsSavingWhatsapp(true);
+      await updateBusinessOrderWhatsapp(businessId, rawDigits);
+      setSavedWhatsapp(rawDigits);
+      setOrderWhatsapp(rawDigits ? formatPhone(rawDigits) : '');
+      setWhatsappSuccess(rawDigits ? 'WhatsApp de pedidos atualizado com sucesso!' : 'WhatsApp de pedidos desativado.');
+      setTimeout(() => setWhatsappSuccess(''), 4000);
+    } catch (err: any) {
+      setWhatsappError('Erro ao salvar WhatsApp de pedidos: ' + (err?.message || 'Tente novamente.'));
+    } finally {
+      setIsSavingWhatsapp(false);
+    }
+  };
 
   const sanitizeSlugInput = (val: string) => {
     return val
@@ -252,6 +306,52 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
       setSellerToToggle(null);
     } catch (err: any) {
       alert('Erro ao alterar status do vendedor: ' + err.message);
+    }
+  };
+
+  const handleCreateNewPriceTable = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTableName.trim()) {
+      setTableFormError('Digite o nome da tabela.');
+      return;
+    }
+    const discount = Number(newTableDiscount.replace(',', '.'));
+    if (isNaN(discount) || discount < 0 || discount > 100) {
+      setTableFormError('O percentual de desconto deve ser entre 0 e 100%.');
+      return;
+    }
+
+    try {
+      setIsSubmittingTable(true);
+      setTableFormError('');
+      await addPriceTable(businessId, {
+        name: newTableName.trim(),
+        discountPercent: discount,
+      });
+      setIsAddPriceTableOpen(false);
+      setNewTableName('');
+      setNewTableDiscount('');
+    } catch (err: any) {
+      setTableFormError('Erro ao cadastrar tabela de preço: ' + err.message);
+    } finally {
+      setIsSubmittingTable(false);
+    }
+  };
+
+  const handleTogglePriceTableActive = (table: PriceTable) => {
+    const isCurrentlyActive = table.active !== false;
+    const nextActive = !isCurrentlyActive;
+    setTableToToggle({ table, nextActive });
+  };
+
+  const handleConfirmTogglePriceTable = async () => {
+    if (!tableToToggle) return;
+    const { table, nextActive } = tableToToggle;
+    try {
+      await updatePriceTable(businessId, table.id, { active: nextActive });
+      setTableToToggle(null);
+    } catch (err: any) {
+      alert('Erro ao alterar status da tabela de preço: ' + err.message);
     }
   };
 
@@ -414,6 +514,107 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
         </div>
       </div>
 
+      {/* Tabelas de Preço (Visível somente para o Dono) */}
+      {isOwner && (
+        <div className="bg-white rounded-2xl p-4 border border-neutral-200/80 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Tag className="w-4 h-4 text-amber-700" />
+              <h3 className="text-sm font-bold text-neutral-900">Tabelas de Preço</h3>
+            </div>
+            <button
+              id="btn-add-price-table-settings"
+              type="button"
+              onClick={() => {
+                setTableFormError('');
+                setNewTableName('');
+                setNewTableDiscount('');
+                setIsAddPriceTableOpen(true);
+              }}
+              className="text-xs font-bold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100/80 px-2.5 py-1 rounded-lg border border-amber-200 flex items-center gap-1 transition"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Nova Tabela</span>
+            </button>
+          </div>
+
+          <p className="text-xs text-neutral-600">
+            Crie tabelas com desconto percentual único para vincular a clientes (ex: <strong>Atacado 10%</strong>). Ao selecionar o cliente na venda, os preços já virão calculados.
+          </p>
+
+          <div className="space-y-2 pt-1">
+            {priceTables.length === 0 ? (
+              <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 text-center text-xs text-neutral-500">
+                Nenhuma tabela de preço cadastrada ainda.
+              </div>
+            ) : (
+              priceTables.map((table) => {
+                const isInactive = table.active === false;
+                return (
+                  <div
+                    key={table.id}
+                    id={`price-table-row-${table.id}`}
+                    className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 transition ${
+                      isInactive
+                        ? 'bg-neutral-50 border-neutral-200 opacity-60'
+                        : 'bg-white border-neutral-200 hover:border-neutral-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div
+                        className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 ${
+                          isInactive
+                            ? 'bg-neutral-200 text-neutral-500'
+                            : 'bg-amber-100 text-amber-900 border border-amber-300'
+                        }`}
+                      >
+                        %
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`font-semibold text-xs truncate ${isInactive ? 'text-neutral-500 line-through' : 'text-neutral-900'}`}>
+                            {table.name}
+                          </span>
+                          {isInactive && (
+                            <span className="text-[10px] font-bold text-red-700 bg-red-100 border border-red-200 px-1.5 py-0.2 rounded">
+                              Inativo
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-amber-900 font-semibold mt-0.5">
+                          {table.discountPercent}% de desconto
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <span className="text-[10px] font-bold text-neutral-600 bg-neutral-100 px-2 py-0.5 rounded-full">
+                        -{table.discountPercent}%
+                      </span>
+
+                      {/* Ativar/Inativar Button */}
+                      <button
+                        id={`btn-toggle-price-table-${table.id}`}
+                        type="button"
+                        onClick={() => handleTogglePriceTableActive(table)}
+                        className={`p-1.5 rounded-lg transition text-xs font-semibold ${
+                          isInactive
+                            ? 'text-emerald-700 hover:bg-emerald-50'
+                            : 'text-neutral-400 hover:text-red-700 hover:bg-red-50'
+                        }`}
+                        title={isInactive ? 'Reativar tabela de preço' : 'Inativar tabela de preço'}
+                      >
+                        <Power className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Link do Catálogo Virtual (Visível somente para o Dono) */}
       {isOwner && (
         <div className="bg-white rounded-2xl p-4 border border-neutral-200/80 shadow-sm space-y-3">
@@ -519,6 +720,82 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
               </div>
             </div>
           )}
+
+          {/* Divisor sutil */}
+          <div className="border-t border-neutral-100 my-2" />
+
+          {/* WhatsApp para Pedidos do Catálogo */}
+          <div className="space-y-2.5 pt-1">
+            <div className="flex items-center gap-1.5">
+              <MessageSquare className="w-4 h-4 text-emerald-700" />
+              <h4 className="text-xs font-bold text-neutral-900">WhatsApp para Pedidos do Catálogo</h4>
+            </div>
+            <p className="text-xs text-neutral-600 leading-relaxed">
+              Receba pedidos prontos via WhatsApp diretamente dos clientes que visitarem seu catálogo virtual. Se deixar em branco, o catálogo continuará apenas como vitrine.
+            </p>
+
+            <form onSubmit={handleSaveOrderWhatsapp} className="space-y-2.5">
+              <div>
+                <label htmlFor="input-catalog-whatsapp" className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                  WhatsApp para Pedidos:
+                </label>
+                <input
+                  id="input-catalog-whatsapp"
+                  type="tel"
+                  inputMode="tel"
+                  placeholder="(11) 99999-9999"
+                  value={orderWhatsapp}
+                  onChange={(e) => {
+                    setWhatsappError('');
+                    setOrderWhatsapp(formatPhone(e.target.value));
+                  }}
+                  className="w-full px-3 py-2 text-xs font-bold text-neutral-900 rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-600 bg-white shadow-2xs placeholder-neutral-400"
+                />
+              </div>
+
+              {whatsappError && (
+                <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-1.5 animate-in fade-in">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{whatsappError}</span>
+                </div>
+              )}
+
+              {whatsappSuccess && (
+                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-center gap-1.5 animate-in fade-in">
+                  <Check className="w-4 h-4 flex-shrink-0 text-emerald-600" />
+                  <span>{whatsappSuccess}</span>
+                </div>
+              )}
+
+              <button
+                id="btn-save-catalog-whatsapp"
+                type="submit"
+                disabled={isSavingWhatsapp}
+                className="w-full py-2.5 bg-neutral-900 hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs shadow-sm flex items-center justify-center gap-2 transition active:scale-98"
+              >
+                {isSavingWhatsapp ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Salvando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Salvar WhatsApp de Pedidos</span>
+                  </>
+                )}
+              </button>
+            </form>
+
+            {savedWhatsapp && (
+              <div className="pt-1 flex items-center justify-between text-xs">
+                <span className="text-neutral-500 font-medium text-[11px]">Número ativo para pedidos:</span>
+                <span className="font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg text-xs">
+                  {formatPhone(savedWhatsapp)}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -886,6 +1163,113 @@ export function SettingsTab({ sellers, sales = [], customers = [] }: SettingsTab
         variant={sellerToToggle?.nextActive ? 'primary' : 'warning'}
         onConfirm={handleConfirmToggleSeller}
         onCancel={() => setSellerToToggle(null)}
+      />
+
+      {/* Modal Novo Cadastro de Tabela de Preço */}
+      {isAddPriceTableOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-neutral-100 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center font-bold text-sm">
+                  <Tag className="w-4 h-4 text-amber-800" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-neutral-900 leading-tight">Nova Tabela de Preço</h3>
+                  <p className="text-[10px] text-neutral-500 font-medium">Desconto percentual por cliente</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddPriceTableOpen(false)}
+                className="text-neutral-400 hover:text-neutral-600 p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateNewPriceTable} className="pt-4 space-y-3">
+              {tableFormError && (
+                <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{tableFormError}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 mb-1">
+                  Nome da Tabela *
+                </label>
+                <input
+                  id="input-new-price-table-name"
+                  type="text"
+                  placeholder="Ex: Atacado, Revendedor, Especial"
+                  value={newTableName}
+                  onChange={(e) => setNewTableName(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-neutral-50/50 font-semibold"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 mb-1">
+                  Desconto Percentual (%) *
+                </label>
+                <div className="relative">
+                  <Percent className="w-4 h-4 absolute left-3 top-2.5 text-neutral-400" />
+                  <input
+                    id="input-new-price-table-discount"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.5"
+                    placeholder="Ex: 10"
+                    value={newTableDiscount}
+                    onChange={(e) => setNewTableDiscount(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-neutral-300 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-neutral-50/50 font-bold"
+                    required
+                  />
+                </div>
+                <p className="text-[10px] text-neutral-500 mt-1">
+                  Exemplo: 10 aplica 10% de desconto sobre o valor de qualquer produto.
+                </p>
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddPriceTableOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-neutral-300 text-neutral-700 text-xs font-bold hover:bg-neutral-50 transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  id="btn-confirm-add-price-table"
+                  type="submit"
+                  disabled={isSubmittingTable}
+                  className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white text-xs font-bold shadow transition active:scale-95 disabled:opacity-50"
+                >
+                  {isSubmittingTable ? 'Salvando...' : 'Salvar Tabela'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação: Ativar/Inativar Tabela de Preço */}
+      <ConfirmDialog
+        isOpen={Boolean(tableToToggle)}
+        title={tableToToggle?.nextActive ? 'Reativar Tabela' : 'Inativar Tabela'}
+        message={
+          tableToToggle?.nextActive
+            ? `Deseja reativar a tabela "${tableToToggle.table.name}"? Os clientes vinculados a ela voltarão a receber o desconto de ${tableToToggle.table.discountPercent}% nas próximas vendas.`
+            : `Deseja inativar a tabela "${tableToToggle?.table.name}"? Os clientes vinculados a ela passarão a pagar o preço cheio automaticamente nas próximas vendas.`
+        }
+        confirmLabel={tableToToggle?.nextActive ? 'Reativar' : 'Inativar'}
+        variant={tableToToggle?.nextActive ? 'primary' : 'warning'}
+        onConfirm={handleConfirmTogglePriceTable}
+        onCancel={() => setTableToToggle(null)}
       />
 
       {/* Modal de Confirmação: Limpar Dados do Negócio */}

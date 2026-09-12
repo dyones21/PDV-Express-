@@ -19,7 +19,7 @@ import {
   runTransaction,
 } from 'firebase/firestore';
 import { db, DEFAULT_BUSINESS_ID, ensureAuthSession } from './firebase';
-import { Customer, Product, Sale, Payment, Seller, Business } from '@/types';
+import { Customer, Product, Sale, Payment, Seller, Business, PriceTable } from '@/types';
 import { hashPin, generateSalt } from './security';
 
 export { DEFAULT_BUSINESS_ID };
@@ -155,6 +155,7 @@ export function subscribeBusiness(
         createdAt: sanitizeString(data.createdAt, ''),
         active: data.active !== false,
         slug: typeof data.slug === 'string' && data.slug ? data.slug : undefined,
+        orderWhatsapp: typeof data.orderWhatsapp === 'string' && data.orderWhatsapp ? data.orderWhatsapp : undefined,
       } as Business);
     },
     (err) => console.warn('subscribeBusiness error:', err)
@@ -174,6 +175,7 @@ export async function getBusiness(businessId = DEFAULT_BUSINESS_ID): Promise<Bus
       createdAt: sanitizeString(data.createdAt, ''),
       active: data.active !== false,
       slug: typeof data.slug === 'string' && data.slug ? data.slug : undefined,
+      orderWhatsapp: typeof data.orderWhatsapp === 'string' && data.orderWhatsapp ? data.orderWhatsapp : undefined,
     } as Business;
   } catch (err) {
     console.warn('getBusiness error:', err);
@@ -199,6 +201,10 @@ export function getPaymentsCol(businessId = DEFAULT_BUSINESS_ID) {
 
 export function getSellersCol(businessId = DEFAULT_BUSINESS_ID) {
   return collection(db, 'businesses', businessId, 'sellers');
+}
+
+export function getPriceTablesCol(businessId = DEFAULT_BUSINESS_ID) {
+  return collection(db, 'businesses', businessId, 'priceTables');
 }
 
 // Initial Seeding for first-time use
@@ -487,6 +493,7 @@ export function subscribeCustomers(
           cpf: sanitizeString(cleanData.cpf, ''),
           address: sanitizeString(cleanData.address, ''),
           referencePoint: sanitizeString(cleanData.referencePoint, ''),
+          priceTableId: typeof cleanData.priceTableId === 'string' && cleanData.priceTableId ? cleanData.priceTableId : undefined,
           totalDebt: sanitizeNumber(cleanData.totalDebt, 0),
           totalPurchased: sanitizeNumber(cleanData.totalPurchased, 0),
         } as Customer;
@@ -583,19 +590,22 @@ export async function syncPublicCatalogItem(
           businessName,
           active: true,
           slug: typeof bSnap.data()?.slug === 'string' ? bSnap.data()?.slug : undefined,
+          orderWhatsapp: typeof bSnap.data()?.orderWhatsapp === 'string' ? bSnap.data()?.orderWhatsapp : undefined,
           updatedAt: new Date().toISOString(),
         }));
       }
       knownPublicCatalogs.add(businessId);
     }
 
-    // 2. Gravar exclusivamente os campos públicos permitidos
+    // 2. Gravar exclusivamente os campos públicos permitidos (nunca expor stockQuantity exato)
     const itemRef = doc(db, 'publicCatalog', businessId, 'items', product.id);
+    const inStock = product.stockQuantity === undefined || product.stockQuantity > 0;
     const publicPayload: Record<string, any> = {
       name: sanitizeString(product.name, 'Produto'),
       price: sanitizeNumber(product.price, 0),
       unit: sanitizeString(product.unit, 'un'),
       active: product.active !== false,
+      inStock,
     };
     if (product.imageUrl && typeof product.imageUrl === 'string') {
       publicPayload.imageUrl = product.imageUrl;
@@ -604,6 +614,36 @@ export async function syncPublicCatalogItem(
     await setDoc(itemRef, cleanUndefined(publicPayload));
   } catch (err) {
     console.warn('Erro ao sincronizar item com catálogo público:', err);
+  }
+}
+
+/**
+ * Atualiza SOMENTE o status de disponibilidade (inStock) no catálogo público,
+ * sem reescrever outros campos (nome, preço, foto) e sem expor a quantidade exata de estoque.
+ */
+export async function refreshPublicCatalogStockStatus(
+  businessId = DEFAULT_BUSINESS_ID,
+  productId: string
+): Promise<void> {
+  try {
+    const pRef = doc(getProductsCol(businessId), productId);
+    const snap = await getDoc(pRef);
+    if (!snap.exists()) return;
+    const pData = sanitizeDocData(snap.data());
+    const stockQty = typeof pData.stockQuantity === 'number' ? pData.stockQuantity : undefined;
+    const inStock = stockQty === undefined || stockQty > 0;
+    const isActive = pData.active !== false;
+
+    const itemRef = doc(db, 'publicCatalog', businessId, 'items', productId);
+    const itemSnap = await getDoc(itemRef);
+    if (itemSnap.exists()) {
+      await updateDoc(itemRef, {
+        inStock,
+        active: isActive,
+      });
+    }
+  } catch (err) {
+    console.warn('refreshPublicCatalogStockStatus warning:', err);
   }
 }
 
@@ -648,6 +688,7 @@ export async function updateProduct(
         price: sanitizeNumber(pData.price, 0),
         unit: sanitizeString(pData.unit, 'un'),
         active: pData.active !== false,
+        stockQuantity: typeof pData.stockQuantity === 'number' ? pData.stockQuantity : undefined,
         imageUrl: typeof pData.imageUrl === 'string' ? pData.imageUrl : undefined,
       };
       await syncPublicCatalogItem(businessId, syncedProduct);
@@ -677,6 +718,13 @@ export async function restockProduct(
   }
   await updateDoc(docRef, cleanUndefined(updates));
 
+  // Sincronizar status de disponibilidade no catálogo público após reposição
+  try {
+    await refreshPublicCatalogStockStatus(businessId, productId);
+  } catch (refreshErr) {
+    console.warn('refreshPublicCatalogStockStatus in restockProduct warning:', refreshErr);
+  }
+
   // Se o preço de venda foi alterado na reposição, sincronizar com o catálogo público
   if (newSalePrice !== undefined && newSalePrice > 0) {
     try {
@@ -689,6 +737,7 @@ export async function restockProduct(
           price: sanitizeNumber(pData.price, newSalePrice),
           unit: sanitizeString(pData.unit, 'un'),
           active: pData.active !== false,
+          stockQuantity: typeof pData.stockQuantity === 'number' ? pData.stockQuantity : undefined,
           imageUrl: typeof pData.imageUrl === 'string' ? pData.imageUrl : undefined,
         };
         await syncPublicCatalogItem(businessId, syncedProduct);
@@ -750,10 +799,48 @@ export async function updateBusinessSlug(
   } else {
     const bSnap = await getDoc(bRef);
     const bName = bSnap.exists() ? sanitizeString(bSnap.data()?.name, 'Meu Catálogo') : 'Meu Catálogo';
+    const bOrderWhatsapp = bSnap.exists() && typeof bSnap.data()?.orderWhatsapp === 'string' ? bSnap.data()?.orderWhatsapp : undefined;
     await setDoc(pcRef, cleanUndefined({
       businessName: bName,
       active: true,
       slug: cleanSlug,
+      orderWhatsapp: bOrderWhatsapp,
+      updatedAt: new Date().toISOString(),
+    }));
+  }
+}
+
+/**
+ * Atualiza o WhatsApp para pedidos do catálogo tanto em businesses/{businessId} quanto em publicCatalog/{businessId}.
+ */
+export async function updateBusinessOrderWhatsapp(
+  businessId = DEFAULT_BUSINESS_ID,
+  orderWhatsapp: string
+): Promise<void> {
+  await ensureAuthSession();
+  const cleanPhone = orderWhatsapp.trim();
+
+  // 1. Gravar campo orderWhatsapp em businesses/{businessId}
+  const bRef = getBusinessRef(businessId);
+  await updateDoc(bRef, { orderWhatsapp: cleanPhone });
+
+  // 2. Replicar esse campo no documento publicCatalog/{businessId} correspondente
+  const pcRef = doc(db, 'publicCatalog', businessId);
+  const pcSnap = await getDoc(pcRef);
+  if (pcSnap.exists()) {
+    await updateDoc(pcRef, {
+      orderWhatsapp: cleanPhone,
+      updatedAt: new Date().toISOString(),
+    });
+  } else {
+    const bSnap = await getDoc(bRef);
+    const bName = bSnap.exists() ? sanitizeString(bSnap.data()?.name, 'Meu Catálogo') : 'Meu Catálogo';
+    const bSlug = bSnap.exists() && typeof bSnap.data()?.slug === 'string' ? bSnap.data()?.slug : undefined;
+    await setDoc(pcRef, cleanUndefined({
+      businessName: bName,
+      active: true,
+      slug: bSlug,
+      orderWhatsapp: cleanPhone,
       updatedAt: new Date().toISOString(),
     }));
   }
@@ -764,6 +851,7 @@ export async function getPublicCatalog(idOrSlug: string): Promise<{
   businessName: string;
   active: boolean;
   slug?: string;
+  orderWhatsapp?: string;
 } | null> {
   try {
     if (!idOrSlug) return null;
@@ -779,6 +867,7 @@ export async function getPublicCatalog(idOrSlug: string): Promise<{
         businessName: sanitizeString(data.businessName, 'Catálogo de Produtos'),
         active: data.active !== false,
         slug: typeof data.slug === 'string' && data.slug ? data.slug : undefined,
+        orderWhatsapp: typeof data.orderWhatsapp === 'string' && data.orderWhatsapp ? data.orderWhatsapp : undefined,
       };
     }
 
@@ -797,6 +886,7 @@ export async function getPublicCatalog(idOrSlug: string): Promise<{
         businessName: sanitizeString(data.businessName, 'Catálogo de Produtos'),
         active: data.active !== false,
         slug: typeof data.slug === 'string' && data.slug ? data.slug : undefined,
+        orderWhatsapp: typeof data.orderWhatsapp === 'string' && data.orderWhatsapp ? data.orderWhatsapp : undefined,
       };
     }
 
@@ -815,6 +905,7 @@ export async function getPublicCatalogItems(businessId: string): Promise<Array<{
   unit: string;
   imageUrl?: string;
   active: boolean;
+  inStock?: boolean;
 }>> {
   try {
     const itemsCol = collection(db, 'publicCatalog', businessId, 'items');
@@ -829,9 +920,10 @@ export async function getPublicCatalogItems(businessId: string): Promise<Array<{
           unit: sanitizeString(dData.unit, 'un'),
           imageUrl: typeof dData.imageUrl === 'string' && dData.imageUrl ? dData.imageUrl : undefined,
           active: dData.active !== false,
+          inStock: dData.inStock !== false,
         };
       })
-      .filter((item) => item.active);
+      .filter((item) => item.active && item.inStock !== false);
 
     return items;
   } catch (err) {
@@ -945,6 +1037,12 @@ export async function recordSale(
               stockQuantity: increment(-qty),
             }));
           }
+          // Sincronizar status de disponibilidade no catálogo público
+          try {
+            await refreshPublicCatalogStockStatus(businessId, item.productId);
+          } catch (catalogErr) {
+            console.warn('refreshPublicCatalogStockStatus in recordSale warning:', catalogErr);
+          }
         }
       } catch (e: any) {
         console.error('Erro ao decrementar estoque do produto na venda:', e);
@@ -996,6 +1094,12 @@ export async function cancelSale(
             await updateDoc(pRef, cleanUndefined({
               stockQuantity: increment(qty),
             }));
+          }
+          // Sincronizar status de disponibilidade no catálogo público após reversão
+          try {
+            await refreshPublicCatalogStockStatus(businessId, item.productId);
+          } catch (catalogErr) {
+            console.warn('refreshPublicCatalogStockStatus in cancelSale warning:', catalogErr);
           }
         }
       } catch (e) {
@@ -1184,4 +1288,55 @@ export async function updateSeller(
   const docRef = doc(getSellersCol(businessId), sellerId);
   await updateDoc(docRef, cleanUndefined(updates));
 }
+
+// ----------------- PRICE TABLES -----------------
+
+export function subscribePriceTables(
+  businessId = DEFAULT_BUSINESS_ID,
+  callback: (priceTables: PriceTable[]) => void
+) {
+  const q = query(getPriceTablesCol(businessId), orderBy('name', 'asc'));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const priceTables: PriceTable[] = snapshot.docs.map((docSnap) => {
+        const cleanData = sanitizeDocData(docSnap.data());
+        return {
+          id: docSnap.id,
+          ...cleanData,
+          name: sanitizeString(cleanData.name, 'Tabela'),
+          discountPercent: sanitizeNumber(cleanData.discountPercent, 0),
+          active: cleanData.active !== false,
+        } as PriceTable;
+      });
+      callback(priceTables);
+    },
+    (err) => console.warn('subscribePriceTables error:', err)
+  );
+}
+
+export async function addPriceTable(
+  businessId = DEFAULT_BUSINESS_ID,
+  tableData: { name: string; discountPercent: number }
+): Promise<string> {
+  await ensureAuthSession();
+  const docRef = await addDoc(getPriceTablesCol(businessId), cleanUndefined({
+    name: tableData.name.trim(),
+    discountPercent: Number(tableData.discountPercent || 0),
+    active: true,
+    createdAt: new Date().toISOString(),
+  }));
+  return docRef.id;
+}
+
+export async function updatePriceTable(
+  businessId = DEFAULT_BUSINESS_ID,
+  priceTableId: string,
+  updates: Partial<PriceTable> | { active?: boolean }
+): Promise<void> {
+  await ensureAuthSession();
+  const docRef = doc(getPriceTablesCol(businessId), priceTableId);
+  await updateDoc(docRef, cleanUndefined(updates));
+}
+
 
