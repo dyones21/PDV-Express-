@@ -119,6 +119,11 @@ service cloud.firestore {
       match /payments/{paymentId} {
         allow read, write: if isPlatformAdmin() || isOwnerOfBusiness(businessId);
       }
+
+      // 5.6 Subcoleção: priceTables (Tabelas de preço por cliente)
+      match /priceTables/{priceTableId} {
+        allow read, write: if isPlatformAdmin() || isOwnerOfBusiness(businessId);
+      }
     }
 
     // 6. Coleção Raiz: publicCatalog (Catálogo Virtual Público - Vitrine de Produtos)
