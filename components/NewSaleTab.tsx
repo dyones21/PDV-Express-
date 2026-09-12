@@ -65,6 +65,11 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
   const [partialPaidInput, setPartialPaidInput] = useState<string>('');
   const [notes, setNotes] = useState('');
 
+  // State: Desconto no Total (Opcional)
+  const [showDiscountSection, setShowDiscountSection] = useState(false);
+  const [discountType, setDiscountType] = useState<'percent' | 'fixed'>('percent');
+  const [discountValueInput, setDiscountValueInput] = useState('');
+
   // Helper para selecionar Cliente Avulso garantindo reset de fiado
   const handleSelectAnonymous = () => {
     setIsAnonymous(true);
@@ -144,6 +149,29 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
       });
     }
   });
+
+  // Cálculo do Desconto sobre o Total da Venda (opcional)
+  let discountValue = 0;
+  let discountAmount = 0;
+
+  if (discountType === 'percent') {
+    const rawVal = parseFloat(discountValueInput.replace(',', '.')) || 0;
+    discountValue = Math.min(100, Math.max(0, rawVal));
+    if (discountValue > 0 && calculatedTotal > 0) {
+      discountAmount = Math.round(calculatedTotal * (discountValue / 100) * 100) / 100;
+      discountAmount = Math.min(calculatedTotal, Math.max(0, discountAmount));
+    }
+  } else {
+    // fixed
+    const parsed = parseCurrencyToNumber(discountValueInput);
+    discountValue = Math.max(0, parsed);
+    if (discountValue > 0 && calculatedTotal > 0) {
+      discountAmount = Math.min(calculatedTotal, discountValue);
+    }
+  }
+
+  const finalTotal = Math.max(0, Math.round((calculatedTotal - discountAmount) * 100) / 100);
+  const hasDiscount = discountAmount > 0;
 
   const handleQtyChange = (productId: string, delta: number) => {
     setQuantities((prev) => {
@@ -294,18 +322,18 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
   let paymentStatus: PaymentStatus = 'paid';
 
   if (paymentOption === 'paid_full') {
-    paidAmount = calculatedTotal;
+    paidAmount = finalTotal;
     remainingAmount = 0;
     paymentStatus = 'paid';
   } else if (paymentOption === 'pending_full') {
     paidAmount = 0;
-    remainingAmount = calculatedTotal;
+    remainingAmount = finalTotal;
     paymentStatus = 'pending';
   } else {
     // Partial
     const parsedPartial = parseCurrencyToNumber(partialPaidInput);
-    paidAmount = Math.min(calculatedTotal, Math.max(0, parsedPartial));
-    remainingAmount = Math.max(0, calculatedTotal - paidAmount);
+    paidAmount = Math.min(finalTotal, Math.max(0, parsedPartial));
+    remainingAmount = Math.max(0, finalTotal - paidAmount);
     paymentStatus = remainingAmount === 0 ? 'paid' : 'partial';
   }
 
@@ -431,6 +459,9 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
         setPaymentOption('paid_full');
         setPartialPaidInput('');
         setNotes('');
+        setDiscountType('percent');
+        setDiscountValueInput('');
+        setShowDiscountSection(false);
         return;
       } else {
         pendingSavedSaleRef.current = null;
@@ -446,6 +477,14 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
 
       const fallbackSaleId = 'offline_' + Date.now();
 
+      const discountPayload = hasDiscount
+        ? {
+            discountType,
+            discountValue,
+            discountAmount,
+          }
+        : {};
+
       const baseSaleData = {
         customerId: currentCustomerId,
         customerName,
@@ -455,7 +494,8 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
         sellerId: activeSeller?.id || 'vendedor',
         sellerName: activeSeller?.name || 'Vendedor',
         items: selectedItems,
-        totalAmount: calculatedTotal,
+        totalAmount: finalTotal,
+        ...discountPayload,
         paidAmount,
         remainingAmount,
         paymentStatus,
@@ -542,6 +582,9 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
         setPaymentOption('paid_full');
         setPartialPaidInput('');
         setNotes('');
+        setDiscountType('percent');
+        setDiscountValueInput('');
+        setShowDiscountSection(false);
       } catch (innerErr: any) {
         clearTimeout(timeoutId);
         if (innerErr?.message === 'TIMEOUT_SAVE') {
@@ -566,6 +609,9 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
             setPaymentOption('paid_full');
             setPartialPaidInput('');
             setNotes('');
+            setDiscountType('percent');
+            setDiscountValueInput('');
+            setShowDiscountSection(false);
             return;
           }
           alert('Não foi possível confirmar o salvamento. Verifique sua conexão e tente novamente.');
@@ -579,11 +625,24 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
   };
 
   const handleShareWhatsApp = (sale: any) => {
+    const hasSaleDiscount = typeof sale.discountAmount === 'number' && sale.discountAmount > 0;
+    const itemsListText = sale.items.map((i: any) => `• ${i.quantity}x ${i.productName} - ${formatCurrency(i.subtotal)}`).join('\n');
+
+    let totalSectionText = '';
+    if (hasSaleDiscount) {
+      const subtotal = sale.items.reduce((acc: number, item: any) => acc + (item.subtotal || 0), 0);
+      totalSectionText = `\n\n*Subtotal:* ${formatCurrency(subtotal)}\n` +
+        `*Desconto:* -${formatCurrency(sale.discountAmount)}\n` +
+        `*Total:* ${formatCurrency(sale.totalAmount)}\n`;
+    } else {
+      totalSectionText = `\n\n*Total:* ${formatCurrency(sale.totalAmount)}\n`;
+    }
+
     let text = `📦 *Comprovante de Compra - PDV Express*\n\n` +
       `Olá, *${sale.customerName}*!\n` +
       `Aqui está o comprovante da sua compra:\n\n` +
-      sale.items.map((i: any) => `• ${i.quantity}x ${i.productName} - ${formatCurrency(i.subtotal)}`).join('\n') +
-      `\n\n*Total:* ${formatCurrency(sale.totalAmount)}\n` +
+      itemsListText +
+      totalSectionText +
       (sale.paymentStatus === 'paid'
         ? `✅ *Status:* Pago à vista no ${sale.paymentMethod}`
         : sale.paymentStatus === 'partial'
@@ -955,6 +1014,126 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
           </div>
         )}
 
+        {/* Desconto no Total da Venda (Opcional) */}
+        <div className="pt-2 border-t border-neutral-100">
+          {!showDiscountSection && !hasDiscount ? (
+            <button
+              id="btn-toggle-sale-discount"
+              type="button"
+              onClick={() => setShowDiscountSection(true)}
+              className="text-xs font-semibold text-amber-800 hover:text-amber-900 flex items-center gap-1.5 py-1 transition active:scale-95"
+            >
+              <Tag className="w-3.5 h-3.5 text-amber-700" />
+              <span>+ Adicionar desconto</span>
+            </button>
+          ) : (
+            <div className="bg-amber-50/70 border border-amber-200/90 rounded-xl p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-amber-700" />
+                  Desconto no Total
+                </span>
+                <button
+                  id="btn-remove-sale-discount"
+                  type="button"
+                  onClick={() => {
+                    setDiscountValueInput('');
+                    setShowDiscountSection(false);
+                  }}
+                  className="text-[11px] font-semibold text-neutral-500 hover:text-red-700 flex items-center gap-0.5 transition"
+                >
+                  <X className="w-3 h-3" />
+                  Remover
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Abas % / R$ */}
+                <div className="flex rounded-lg border border-amber-300 p-0.5 bg-white flex-shrink-0 shadow-xs">
+                  <button
+                    id="btn-discount-type-percent"
+                    type="button"
+                    onClick={() => {
+                      setDiscountType('percent');
+                      setDiscountValueInput('');
+                    }}
+                    className={`px-3 py-1.5 text-xs font-extrabold rounded-md transition ${
+                      discountType === 'percent'
+                        ? 'bg-amber-700 text-white shadow-xs'
+                        : 'text-neutral-600 hover:bg-neutral-100'
+                    }`}
+                  >
+                    %
+                  </button>
+                  <button
+                    id="btn-discount-type-fixed"
+                    type="button"
+                    onClick={() => {
+                      setDiscountType('fixed');
+                      setDiscountValueInput('');
+                    }}
+                    className={`px-3 py-1.5 text-xs font-extrabold rounded-md transition ${
+                      discountType === 'fixed'
+                        ? 'bg-amber-700 text-white shadow-xs'
+                        : 'text-neutral-600 hover:bg-neutral-100'
+                    }`}
+                  >
+                    R$
+                  </button>
+                </div>
+
+                {/* Input de Valor */}
+                <div className="flex-1">
+                  {discountType === 'fixed' ? (
+                    <input
+                      id="input-sale-discount-fixed"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="R$ 0,00"
+                      value={discountValueInput}
+                      onChange={(e) => setDiscountValueInput(formatCurrencyInput(e.target.value))}
+                      className="w-full px-3 py-1.5 bg-white rounded-lg border border-amber-300 text-xs font-bold text-neutral-900 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                  ) : (
+                    <div className="relative">
+                      <input
+                        id="input-sale-discount-percent"
+                        type="number"
+                        inputMode="numeric"
+                        min="0"
+                        max="100"
+                        step="1"
+                        placeholder="Ex: 10"
+                        value={discountValueInput}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '') {
+                            setDiscountValueInput('');
+                          } else {
+                            const num = Math.min(100, Math.max(0, parseFloat(val) || 0));
+                            setDiscountValueInput(String(num));
+                          }
+                        }}
+                        className="w-full px-3 py-1.5 bg-white rounded-lg border border-amber-300 text-xs font-bold text-neutral-900 focus:ring-2 focus:ring-amber-500 focus:outline-none pr-7"
+                      />
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-neutral-500">
+                        %
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {hasDiscount && (
+                <div className="flex items-center justify-between text-xs font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                  <span>Desconto aplicado:</span>
+                  <span className="font-extrabold">-{formatCurrency(discountAmount)}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Notes (Optional) */}
         <div>
           <input
@@ -976,10 +1155,24 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
       >
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-3">
           <div>
-            <div className="text-[11px] text-neutral-500 font-medium">Total da Venda</div>
-            <div className="text-xl font-extrabold text-neutral-900 leading-tight">
-              {formatCurrency(calculatedTotal)}
-            </div>
+            {hasDiscount ? (
+              <div>
+                <div className="text-[10px] text-neutral-500 flex items-center gap-1.5 leading-tight">
+                  <span>Subtotal: {formatCurrency(calculatedTotal)}</span>
+                  <span className="text-emerald-700 font-bold">Desc: -{formatCurrency(discountAmount)}</span>
+                </div>
+                <div className="text-xl font-extrabold text-neutral-900 leading-tight">
+                  {formatCurrency(finalTotal)}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div className="text-[11px] text-neutral-500 font-medium">Total da Venda</div>
+                <div className="text-xl font-extrabold text-neutral-900 leading-tight">
+                  {formatCurrency(calculatedTotal)}
+                </div>
+              </div>
+            )}
           </div>
 
           <button
@@ -1112,6 +1305,12 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
                   {formatCurrency(successSaleData.totalAmount)}
                 </span>
               </div>
+              {successSaleData.discountAmount && successSaleData.discountAmount > 0 && (
+                <div className="flex justify-between font-semibold text-emerald-800">
+                  <span>Desconto:</span>
+                  <span className="font-bold">-{formatCurrency(successSaleData.discountAmount)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-semibold text-neutral-800">
                 <span>Status:</span>
                 <span

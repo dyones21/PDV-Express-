@@ -97,6 +97,9 @@ export interface Sale {
   sellerName: string;
   items: SaleItem[];
   totalAmount: number;
+  discountType?: 'percent' | 'fixed';
+  discountValue?: number; // valor digitado (ex: 10 para 10%, ou 5 para R$5)
+  discountAmount?: number; // valor final em R$ já calculado, para referência/histórico
   paidAmount: number;
   remainingAmount: number;
   paymentStatus: PaymentStatus;

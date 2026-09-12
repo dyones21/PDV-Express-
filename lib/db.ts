@@ -953,6 +953,9 @@ export function subscribeSales(
           sellerName: sanitizeString(cleanData.sellerName, 'Vendedor'),
           notes: sanitizeString(cleanData.notes, ''),
           totalAmount: sanitizeNumber(cleanData.totalAmount, 0),
+          discountType: cleanData.discountType === 'fixed' || cleanData.discountType === 'percent' ? cleanData.discountType : undefined,
+          discountValue: typeof cleanData.discountValue === 'number' ? sanitizeNumber(cleanData.discountValue, 0) : undefined,
+          discountAmount: typeof cleanData.discountAmount === 'number' ? sanitizeNumber(cleanData.discountAmount, 0) : undefined,
           paidAmount: sanitizeNumber(cleanData.paidAmount, 0),
           remainingAmount: sanitizeNumber(cleanData.remainingAmount, 0),
           items: Array.isArray(cleanData.items)
