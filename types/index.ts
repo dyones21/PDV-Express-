@@ -104,6 +104,7 @@ export interface Sale {
   remainingAmount: number;
   paymentStatus: PaymentStatus;
   paymentMethod: PaymentMethod;
+  paymentBreakdown?: { method: PaymentMethod; amount: number }[];
   notes?: string;
   saleDate: string; // YYYY-MM-DD
   createdAt: string; // ISO String
@@ -126,6 +127,7 @@ export interface Payment {
   sellerId: string;
   sellerName: string;
   paymentMethod: PaymentMethod;
+  paymentBreakdown?: { method: PaymentMethod; amount: number }[];
   paymentDate: string; // YYYY-MM-DD
   notes?: string;
   createdAt: string;

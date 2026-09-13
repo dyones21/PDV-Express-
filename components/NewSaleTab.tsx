@@ -26,7 +26,15 @@ import {
   CalendarClock,
   AlertTriangle,
   Tag,
+  Layers,
 } from 'lucide-react';
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  dinheiro: 'Dinheiro',
+  pix: 'Pix',
+  cartao_debito: 'Débito',
+  cartao_credito: 'Crédito',
+};
 
 interface NewSaleTabProps {
   customers: Customer[];
@@ -64,6 +72,13 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('dinheiro');
   const [partialPaidInput, setPartialPaidInput] = useState<string>('');
   const [notes, setNotes] = useState('');
+
+  // State: Divisão de Pagamento (Opcional - até 2 formas)
+  const [showSplitPayment, setShowSplitPayment] = useState(false);
+  const [splitMethod1, setSplitMethod1] = useState<PaymentMethod>('dinheiro');
+  const [splitAmount1Input, setSplitAmount1Input] = useState<string>('');
+  const [splitMethod2, setSplitMethod2] = useState<PaymentMethod>('pix');
+  const [splitAmount2Input, setSplitAmount2Input] = useState<string>('');
 
   // State: Desconto no Total (Opcional)
   const [showDiscountSection, setShowDiscountSection] = useState(false);
@@ -337,6 +352,13 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
     paymentStatus = remainingAmount === 0 ? 'paid' : 'partial';
   }
 
+  // Split payment helper calculations
+  const targetImmediateAmount = paymentOption === 'paid_full' ? finalTotal : paidAmount;
+  const splitVal1 = parseCurrencyToNumber(splitAmount1Input);
+  const splitVal2 = parseCurrencyToNumber(splitAmount2Input);
+  const splitSum = Math.round((splitVal1 + splitVal2) * 100) / 100;
+  const splitDiff = Math.round((targetImmediateAmount - splitSum) * 100) / 100;
+
   const getDeviceLocation = (): Promise<{ latitude?: number; longitude?: number }> => {
     return new Promise((resolve) => {
       if (typeof window === 'undefined' || !navigator.geolocation) {
@@ -429,6 +451,51 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
 
     const currentCustomerId = isAnonymous ? null : selectedCustomerId;
 
+    // Validação da Divisão de Pagamento (se ativa)
+    const isSplitActive = showSplitPayment && paymentOption !== 'pending_full';
+    const targetExpectedAmount = paymentOption === 'paid_full' ? finalTotal : paidAmount;
+
+    let paymentBreakdown: { method: PaymentMethod; amount: number }[] | undefined = undefined;
+
+    if (isSplitActive) {
+      if (targetExpectedAmount <= 0) {
+        alert(
+          paymentOption === 'partial'
+            ? 'Informe quanto o cliente pagou na hora antes de dividir o pagamento.'
+            : 'O valor a receber deve ser maior que zero para dividir o pagamento.'
+        );
+        return;
+      }
+
+      const val1 = parseCurrencyToNumber(splitAmount1Input);
+      const val2 = parseCurrencyToNumber(splitAmount2Input);
+      const sum = Math.round((val1 + val2) * 100) / 100;
+
+      if (val1 <= 0 || val2 <= 0) {
+        alert('Informe valores maiores que zero para as duas formas de pagamento ou cancele a divisão.');
+        return;
+      }
+
+      if (Math.abs(sum - targetExpectedAmount) > 0.009) {
+        const diff = Math.round((targetExpectedAmount - sum) * 100) / 100;
+        if (diff > 0) {
+          alert(
+            `A soma dos pagamentos (${formatCurrency(sum)}) não confere com o valor esperado (${formatCurrency(targetExpectedAmount)}). Falta ${formatCurrency(diff)}.`
+          );
+        } else {
+          alert(
+            `A soma dos pagamentos (${formatCurrency(sum)}) excede o valor esperado (${formatCurrency(targetExpectedAmount)}) em ${formatCurrency(Math.abs(diff))}.`
+          );
+        }
+        return;
+      }
+
+      paymentBreakdown = [
+        { method: splitMethod1, amount: val1 },
+        { method: splitMethod2, amount: val2 },
+      ];
+    }
+
     // If previous attempt already succeeded saving in background/local cache, use it without duplicating
     if (pendingSavedSaleRef.current) {
       const { id, saleData, warnings } = pendingSavedSaleRef.current;
@@ -462,6 +529,11 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
         setDiscountType('percent');
         setDiscountValueInput('');
         setShowDiscountSection(false);
+        setShowSplitPayment(false);
+        setSplitMethod1('dinheiro');
+        setSplitAmount1Input('');
+        setSplitMethod2('pix');
+        setSplitAmount2Input('');
         return;
       } else {
         pendingSavedSaleRef.current = null;
@@ -499,7 +571,10 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
         paidAmount,
         remainingAmount,
         paymentStatus,
-        paymentMethod: paymentOption === 'pending_full' ? 'dinheiro' : paymentMethod,
+        paymentMethod: paymentOption === 'pending_full'
+          ? 'dinheiro'
+          : (paymentBreakdown && paymentBreakdown.length > 0 ? paymentBreakdown[0].method : paymentMethod),
+        paymentBreakdown,
         notes: notes.trim() || undefined,
         saleDate: getTodayDateString(),
       };
@@ -585,6 +660,11 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
         setDiscountType('percent');
         setDiscountValueInput('');
         setShowDiscountSection(false);
+        setShowSplitPayment(false);
+        setSplitMethod1('dinheiro');
+        setSplitAmount1Input('');
+        setSplitMethod2('pix');
+        setSplitAmount2Input('');
       } catch (innerErr: any) {
         clearTimeout(timeoutId);
         if (innerErr?.message === 'TIMEOUT_SAVE') {
@@ -612,6 +692,11 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
             setDiscountType('percent');
             setDiscountValueInput('');
             setShowDiscountSection(false);
+            setShowSplitPayment(false);
+            setSplitMethod1('dinheiro');
+            setSplitAmount1Input('');
+            setSplitMethod2('pix');
+            setSplitAmount2Input('');
             return;
           }
           alert('Não foi possível confirmar o salvamento. Verifique sua conexão e tente novamente.');
@@ -638,16 +723,36 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
       totalSectionText = `\n\n*Total:* ${formatCurrency(sale.totalAmount)}\n`;
     }
 
+    const hasBreakdown = Array.isArray(sale.paymentBreakdown) && sale.paymentBreakdown.length > 0;
+    const breakdownFormatted = hasBreakdown
+      ? (sale.paymentBreakdown as Array<{ method: string; amount: number }>)
+          .map((b) => `${formatCurrency(b.amount)} (${PAYMENT_METHOD_LABELS[b.method] || b.method})`)
+          .join(' + ')
+      : '';
+
+    let paymentStatusText = '';
+    if (sale.paymentStatus === 'paid') {
+      if (hasBreakdown) {
+        paymentStatusText = `✅ *Status:* Pago à vista\n💳 *Pago:* ${breakdownFormatted}`;
+      } else {
+        paymentStatusText = `✅ *Status:* Pago à vista no ${sale.paymentMethod}`;
+      }
+    } else if (sale.paymentStatus === 'partial') {
+      if (hasBreakdown) {
+        paymentStatusText = `⏳ *Status:* Pago ${formatCurrency(sale.paidAmount)} | Restante a receber: ${formatCurrency(sale.remainingAmount)}\n💳 *Pago:* ${breakdownFormatted}`;
+      } else {
+        paymentStatusText = `⏳ *Status:* Pago ${formatCurrency(sale.paidAmount)} | Restante a receber: ${formatCurrency(sale.remainingAmount)}`;
+      }
+    } else {
+      paymentStatusText = `⏳ *Status:* Fiado (A receber): ${formatCurrency(sale.remainingAmount)}`;
+    }
+
     let text = `📦 *Comprovante de Compra - PDV Express*\n\n` +
       `Olá, *${sale.customerName}*!\n` +
       `Aqui está o comprovante da sua compra:\n\n` +
       itemsListText +
       totalSectionText +
-      (sale.paymentStatus === 'paid'
-        ? `✅ *Status:* Pago à vista no ${sale.paymentMethod}`
-        : sale.paymentStatus === 'partial'
-        ? `⏳ *Status:* Pago ${formatCurrency(sale.paidAmount)} | Restante a receber: ${formatCurrency(sale.remainingAmount)}`
-        : `⏳ *Status:* Fiado (A receber): ${formatCurrency(sale.remainingAmount)}`);
+      paymentStatusText;
 
     if (selectedReminderDate) {
       text += `\n📅 *Retorno previsto:* ${formatDateBr(selectedReminderDate)}`;
@@ -920,7 +1025,10 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
             type="button"
             disabled={isAnonymous}
             onClick={() => {
-              if (!isAnonymous) setPaymentOption('pending_full');
+              if (!isAnonymous) {
+                setPaymentOption('pending_full');
+                setShowSplitPayment(false);
+              }
             }}
             className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 ${
               isAnonymous
@@ -964,31 +1072,162 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
         {/* If Paid on the spot or partial -> choose payment method */}
         {paymentOption !== 'pending_full' && (
           <div className="pt-2 space-y-2 border-t border-neutral-100">
-            <label className="text-[11px] font-semibold text-neutral-600">
-              Meio de recebimento no momento:
-            </label>
-            <div className="grid grid-cols-4 gap-1.5">
-              {[
-                { id: 'dinheiro', label: 'Dinheiro' },
-                { id: 'pix', label: 'Pix' },
-                { id: 'cartao_debito', label: 'Débito' },
-                { id: 'cartao_credito', label: 'Crédito' },
-              ].map((m) => (
-                <button
-                  key={m.id}
-                  id={`btn-method-${m.id}`}
-                  type="button"
-                  onClick={() => setPaymentMethod(m.id as PaymentMethod)}
-                  className={`py-2 px-1 text-center rounded-lg text-xs font-semibold border transition ${
-                    paymentMethod === m.id
-                      ? 'bg-amber-700 border-amber-800 text-white shadow-sm'
-                      : 'bg-neutral-50 border-neutral-200 text-neutral-700 hover:bg-neutral-100'
-                  }`}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
+            {!showSplitPayment ? (
+              <>
+                <div className="flex items-center justify-between gap-1 flex-wrap">
+                  <label className="text-[11px] font-semibold text-neutral-600">
+                    Meio de recebimento no momento:
+                  </label>
+                  <button
+                    id="btn-toggle-split-payment"
+                    type="button"
+                    onClick={() => setShowSplitPayment(true)}
+                    className="text-xs font-semibold text-amber-800 hover:text-amber-900 flex items-center gap-1 transition active:scale-95"
+                  >
+                    <span>+ Dividir entre formas de pagamento</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[
+                    { id: 'dinheiro', label: 'Dinheiro' },
+                    { id: 'pix', label: 'Pix' },
+                    { id: 'cartao_debito', label: 'Débito' },
+                    { id: 'cartao_credito', label: 'Crédito' },
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      id={`btn-method-${m.id}`}
+                      type="button"
+                      onClick={() => setPaymentMethod(m.id as PaymentMethod)}
+                      className={`py-2 px-1 text-center rounded-lg text-xs font-semibold border transition ${
+                        paymentMethod === m.id
+                          ? 'bg-amber-700 border-amber-800 text-white shadow-sm'
+                          : 'bg-neutral-50 border-neutral-200 text-neutral-700 hover:bg-neutral-100'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="bg-amber-50/70 border border-amber-200/90 rounded-xl p-3 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-amber-700" />
+                    Dividir entre 2 formas de pagamento
+                  </span>
+                  <button
+                    id="btn-cancel-split-payment"
+                    type="button"
+                    onClick={() => {
+                      setShowSplitPayment(false);
+                      setSplitAmount1Input('');
+                      setSplitAmount2Input('');
+                    }}
+                    className="text-[11px] font-semibold text-neutral-500 hover:text-red-700 flex items-center gap-0.5 transition"
+                  >
+                    <X className="w-3 h-3" />
+                    Cancelar divisão
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {/* Forma 1 */}
+                  <div className="flex items-center gap-2">
+                    <div className="w-1/2">
+                      <label className="block text-[10px] font-bold text-neutral-600 uppercase mb-0.5">
+                        Forma 1
+                      </label>
+                      <select
+                        id="select-split-method-1"
+                        value={splitMethod1}
+                        onChange={(e) => setSplitMethod1(e.target.value as PaymentMethod)}
+                        className="w-full px-2.5 py-1.5 bg-white rounded-lg border border-amber-300 text-xs font-bold text-neutral-900 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      >
+                        <option value="dinheiro">Dinheiro</option>
+                        <option value="pix">Pix</option>
+                        <option value="cartao_debito">Débito</option>
+                        <option value="cartao_credito">Crédito</option>
+                      </select>
+                    </div>
+                    <div className="w-1/2">
+                      <label className="block text-[10px] font-bold text-neutral-600 uppercase mb-0.5">
+                        Valor (R$)
+                      </label>
+                      <input
+                        id="input-split-amount-1"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="R$ 0,00"
+                        value={splitAmount1Input}
+                        onChange={(e) => setSplitAmount1Input(formatCurrencyInput(e.target.value))}
+                        className="w-full px-3 py-1.5 bg-white rounded-lg border border-amber-300 text-xs font-bold text-neutral-900 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Forma 2 */}
+                  <div className="flex items-center gap-2">
+                    <div className="w-1/2">
+                      <label className="block text-[10px] font-bold text-neutral-600 uppercase mb-0.5">
+                        Forma 2
+                      </label>
+                      <select
+                        id="select-split-method-2"
+                        value={splitMethod2}
+                        onChange={(e) => setSplitMethod2(e.target.value as PaymentMethod)}
+                        className="w-full px-2.5 py-1.5 bg-white rounded-lg border border-amber-300 text-xs font-bold text-neutral-900 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      >
+                        <option value="dinheiro">Dinheiro</option>
+                        <option value="pix">Pix</option>
+                        <option value="cartao_debito">Débito</option>
+                        <option value="cartao_credito">Crédito</option>
+                      </select>
+                    </div>
+                    <div className="w-1/2">
+                      <label className="block text-[10px] font-bold text-neutral-600 uppercase mb-0.5">
+                        Valor (R$)
+                      </label>
+                      <input
+                        id="input-split-amount-2"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="R$ 0,00"
+                        value={splitAmount2Input}
+                        onChange={(e) => setSplitAmount2Input(formatCurrencyInput(e.target.value))}
+                        className="w-full px-3 py-1.5 bg-white rounded-lg border border-amber-300 text-xs font-bold text-neutral-900 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Feedback em tempo real */}
+                {paymentOption === 'partial' && targetImmediateAmount <= 0 ? (
+                  <div className="text-[11px] font-medium text-amber-800 bg-amber-100/70 p-2 rounded-lg">
+                    Digite no campo abaixo quanto o cliente pagou na hora para conferir a divisão.
+                  </div>
+                ) : targetImmediateAmount > 0 ? (
+                  splitDiff > 0.005 ? (
+                    <div className="flex items-center justify-between text-xs font-semibold text-amber-900 bg-amber-100/80 px-2.5 py-1.5 rounded-lg border border-amber-300/80">
+                      <span>Soma: {formatCurrency(splitSum)} de {formatCurrency(targetImmediateAmount)}</span>
+                      <span className="font-extrabold text-amber-800">Falta {formatCurrency(splitDiff)}</span>
+                    </div>
+                  ) : splitDiff < -0.005 ? (
+                    <div className="flex items-center justify-between text-xs font-semibold text-red-900 bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200">
+                      <span>Soma: {formatCurrency(splitSum)} de {formatCurrency(targetImmediateAmount)}</span>
+                      <span className="font-extrabold text-red-700">{formatCurrency(Math.abs(splitDiff))} a mais</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between text-xs font-semibold text-emerald-900 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200">
+                      <span>Soma: {formatCurrency(splitSum)}</span>
+                      <span className="font-extrabold text-emerald-700">✓ Soma exata conferida</span>
+                    </div>
+                  )
+                ) : null}
+              </div>
+            )}
           </div>
         )}
 
@@ -1325,6 +1564,16 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
                     : 'Ficou Fiado'}
                 </span>
               </div>
+              {successSaleData.paymentBreakdown && successSaleData.paymentBreakdown.length > 0 && (
+                <div className="flex justify-between font-semibold text-neutral-800">
+                  <span>Formas:</span>
+                  <span className="font-bold text-neutral-900">
+                    {successSaleData.paymentBreakdown
+                      .map((b: any) => `${formatCurrency(b.amount)} (${PAYMENT_METHOD_LABELS[b.method] || b.method})`)
+                      .join(' + ')}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Bloco de Avisos / Alertas de Processamento Parcial */}

@@ -19,7 +19,7 @@ import {
   runTransaction,
 } from 'firebase/firestore';
 import { db, DEFAULT_BUSINESS_ID, ensureAuthSession } from './firebase';
-import { Customer, Product, Sale, Payment, Seller, Business, PriceTable } from '@/types';
+import { Customer, Product, Sale, Payment, Seller, Business, PriceTable, PaymentMethod } from '@/types';
 import { hashPin, generateSalt } from './security';
 
 export { DEFAULT_BUSINESS_ID };
@@ -956,6 +956,12 @@ export function subscribeSales(
           discountType: cleanData.discountType === 'fixed' || cleanData.discountType === 'percent' ? cleanData.discountType : undefined,
           discountValue: typeof cleanData.discountValue === 'number' ? sanitizeNumber(cleanData.discountValue, 0) : undefined,
           discountAmount: typeof cleanData.discountAmount === 'number' ? sanitizeNumber(cleanData.discountAmount, 0) : undefined,
+          paymentBreakdown: Array.isArray(cleanData.paymentBreakdown)
+            ? cleanData.paymentBreakdown.map((item: any) => ({
+                method: sanitizeString(item.method, 'dinheiro') as PaymentMethod,
+                amount: sanitizeNumber(item.amount, 0),
+              }))
+            : undefined,
           paidAmount: sanitizeNumber(cleanData.paidAmount, 0),
           remainingAmount: sanitizeNumber(cleanData.remainingAmount, 0),
           items: Array.isArray(cleanData.items)
@@ -983,10 +989,15 @@ export async function recordSale(
   await ensureAuthSession();
   const nowIso = new Date().toISOString();
   const warnings: string[] = [];
+
+  const effectivePaymentMethod = (saleData.paymentBreakdown && saleData.paymentBreakdown.length > 0)
+    ? saleData.paymentBreakdown[0].method
+    : saleData.paymentMethod;
   
   // 1. Create Sale Doc
   const docRef = await addDoc(getSalesCol(businessId), cleanUndefined({
     ...saleData,
+    paymentMethod: effectivePaymentMethod,
     createdAt: nowIso,
   }));
 
@@ -1017,7 +1028,10 @@ export async function recordSale(
         remainingDebtAfter: saleData.remainingAmount,
         sellerId: saleData.sellerId,
         sellerName: saleData.sellerName,
-        paymentMethod: saleData.paymentMethod,
+        paymentMethod: effectivePaymentMethod,
+        paymentBreakdown: (saleData.paymentBreakdown && saleData.paymentBreakdown.length > 0)
+          ? saleData.paymentBreakdown
+          : undefined,
         paymentDate: saleData.saleDate,
         notes: saleData.paymentStatus === 'paid' ? 'Pago à vista no ato da venda' : 'Entrada paga no ato da venda',
         createdAt: nowIso,
@@ -1151,6 +1165,12 @@ export function subscribePayments(
           notes: sanitizeString(cleanData.notes, ''),
           amount: sanitizeNumber(cleanData.amount, 0),
           remainingDebtAfter: sanitizeNumber(cleanData.remainingDebtAfter, 0),
+          paymentBreakdown: Array.isArray(cleanData.paymentBreakdown)
+            ? cleanData.paymentBreakdown.map((item: any) => ({
+                method: sanitizeString(item.method, 'dinheiro') as PaymentMethod,
+                amount: sanitizeNumber(item.amount, 0),
+              }))
+            : undefined,
         } as Payment;
       });
       callback(payments, snapshot.metadata);

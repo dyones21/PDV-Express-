@@ -23,11 +23,8 @@ import { auth } from '@/lib/firebase';
 import { 
   Settings, 
   Users, 
-  Wifi, 
-  WifiOff, 
   Check, 
   ShieldCheck, 
-  HardDrive,
   UserCheck,
   UserX,
   Smartphone,
@@ -41,7 +38,6 @@ import {
   ShieldAlert,
   LogOut,
   Trash2,
-  Database,
   RefreshCw,
   ShoppingBag,
   Link2,
@@ -876,88 +872,27 @@ export function SettingsTab({ sellers, sales = [], customers = [], priceTables =
         </div>
       </div>
 
-      {/* Offline & App Diagnostics */}
-      <div className="bg-white rounded-2xl p-4 border border-neutral-200/80 shadow-sm space-y-3">
-        <div className="flex items-center gap-2">
-          <HardDrive className="w-4 h-4 text-amber-700" />
-          <h3 className="text-sm font-bold text-neutral-900">Status Offline & Sincronização</h3>
+      {/* Instalação do Aplicativo (PWA) no Smartphone */}
+      {canInstallPwa && (
+        <div className="bg-white rounded-2xl p-4 border border-neutral-200/80 shadow-sm space-y-3">
+          <div className="flex items-center gap-2">
+            <Smartphone className="w-4 h-4 text-amber-700" />
+            <h3 className="text-sm font-bold text-neutral-900">Aplicativo no Celular</h3>
+          </div>
+          <p className="text-xs text-neutral-600">
+            Instale o PDV Express no seu celular para abrir rapidamente direto da tela inicial, mesmo sem internet.
+          </p>
+          <button
+            id="btn-install-pwa-settings"
+            type="button"
+            onClick={promptInstall}
+            className="w-full py-2.5 bg-amber-700 hover:bg-amber-800 text-white font-bold rounded-xl text-xs shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5"
+          >
+            <Smartphone className="w-4 h-4" />
+            <span>Instalar Aplicativo no Smartphone</span>
+          </button>
         </div>
-
-        <div className="p-3 bg-neutral-50 rounded-xl space-y-2.5 text-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-neutral-600 font-medium">Conexão Atual:</span>
-            <span
-              className={`font-bold flex items-center gap-1 ${
-                isOnline ? 'text-emerald-700' : 'text-amber-800'
-              }`}
-            >
-              {isOnline ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-              {isOnline ? 'Internet Conectada' : 'Sem Conexão (Modo Offline Ativo)'}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <span className="text-neutral-600 font-medium">Persistência Firestore:</span>
-            <span className="font-bold text-emerald-700 flex items-center gap-1">
-              <Check className="w-3.5 h-3.5" />
-              IndexedDB Multi-Tab Habilitado
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <span className="text-neutral-600 font-medium">PWA Instalável no Celular:</span>
-            <span className="font-bold text-amber-900 flex items-center gap-1">
-              <Smartphone className="w-3.5 h-3.5" />
-              {canInstallPwa ? 'Disponível para Instalar' : 'Configurado (Manifest + SW)'}
-            </span>
-          </div>
-
-          {canInstallPwa && (
-            <button
-              id="btn-install-pwa-settings"
-              type="button"
-              onClick={promptInstall}
-              className="w-full mt-2 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shadow transition active:scale-95 flex items-center justify-center gap-1.5"
-            >
-              <Smartphone className="w-4 h-4" />
-              <span>Instalar Aplicativo no Smartphone</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Banco de Dados: pdvexpress-c286f (default) */}
-      <div className="bg-white rounded-2xl p-4 border border-neutral-200/80 shadow-sm space-y-3">
-        <div className="flex items-center gap-2">
-          <Database className="w-4 h-4 text-amber-700" />
-          <h3 className="text-sm font-bold text-neutral-900">Banco de Dados Oficial</h3>
-        </div>
-
-        <p className="text-xs text-neutral-600 leading-relaxed">
-          O aplicativo opera unicamente com o banco de dados oficial do projeto <strong className="text-neutral-900 font-bold">pdvexpress-c286f</strong> na instância <strong className="text-neutral-900 font-bold">(default)</strong>, garantindo total integridade e sincronização em desenvolvimento e produção.
-        </p>
-
-        <div className="p-3 bg-neutral-50 rounded-xl space-y-2 text-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-neutral-600 font-medium">Projeto Firebase:</span>
-            <span className="font-bold text-neutral-900 font-mono text-[11px]">
-              pdvexpress-c286f
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-neutral-600 font-medium">Instância Firestore:</span>
-            <span className="font-bold text-emerald-700 font-mono bg-emerald-100/70 px-2 py-0.5 rounded">
-              (default)
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-neutral-600 font-medium">Modo de Operação:</span>
-            <span className="font-semibold text-neutral-700">
-              Offline-First (Sincronizado)
-            </span>
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* Zona Perigosa: Limpar Dados (Visível apenas para o Dono/Owner) */}
       {isOwner && (
