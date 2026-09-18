@@ -61,6 +61,7 @@ export interface PublicCatalogItem {
   name: string;
   price: number;
   unit: string;
+  category?: string;
   imageUrl?: string;
   active: boolean;
   inStock?: boolean;

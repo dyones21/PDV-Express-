@@ -19,7 +19,7 @@ import {
   runTransaction,
 } from 'firebase/firestore';
 import { db, DEFAULT_BUSINESS_ID, ensureAuthSession } from './firebase';
-import { Customer, Product, Sale, Payment, Seller, Business, PriceTable, PaymentMethod } from '@/types';
+import { Customer, Product, Sale, Payment, Seller, Business, PriceTable, PaymentMethod, PublicCatalogItem } from '@/types';
 import { hashPin, generateSalt } from './security';
 
 export { DEFAULT_BUSINESS_ID };
@@ -559,6 +559,12 @@ export function subscribeProducts(
         } as Product;
       });
       callback(products);
+
+      // Auto-sincronização dos produtos com o catálogo público para garantir categoria atualizada
+      if (!knownPublicCatalogSyncedBusinesses.has(businessId) && products.length > 0) {
+        knownPublicCatalogSyncedBusinesses.add(businessId);
+        syncAllProductsToPublicCatalog(businessId, products).catch(() => {});
+      }
     },
     (err) => console.warn('subscribeProducts error:', err)
   );
@@ -566,6 +572,25 @@ export function subscribeProducts(
 
 // Cache local para evitar chamadas getDoc repetitivas no documento raiz do catálogo público
 const knownPublicCatalogs = new Set<string>();
+const knownPublicCatalogSyncedBusinesses = new Set<string>();
+
+/**
+ * Sincroniza em lote todos os produtos ativos do negócio com o catálogo público.
+ */
+export async function syncAllProductsToPublicCatalog(
+  businessId = DEFAULT_BUSINESS_ID,
+  products: Product[]
+): Promise<void> {
+  try {
+    for (const prod of products) {
+      if (prod.active !== false) {
+        await syncPublicCatalogItem(businessId, prod);
+      }
+    }
+  } catch (err) {
+    console.warn('Aviso: falha na sincronização em lote do catálogo público:', err);
+  }
+}
 
 /**
  * Sincroniza um item de produto com o catálogo público (publicCatalog/{businessId}/items/{productId}).
@@ -604,6 +629,7 @@ export async function syncPublicCatalogItem(
       name: sanitizeString(product.name, 'Produto'),
       price: sanitizeNumber(product.price, 0),
       unit: sanitizeString(product.unit, 'un'),
+      category: sanitizeString(product.category, 'Geral'),
       active: product.active !== false,
       inStock,
     };
@@ -687,6 +713,7 @@ export async function updateProduct(
         name: sanitizeString(pData.name, 'Produto'),
         price: sanitizeNumber(pData.price, 0),
         unit: sanitizeString(pData.unit, 'un'),
+        category: sanitizeString(pData.category, 'Geral'),
         active: pData.active !== false,
         stockQuantity: typeof pData.stockQuantity === 'number' ? pData.stockQuantity : undefined,
         imageUrl: typeof pData.imageUrl === 'string' ? pData.imageUrl : undefined,
@@ -736,6 +763,7 @@ export async function restockProduct(
           name: sanitizeString(pData.name, 'Produto'),
           price: sanitizeNumber(pData.price, newSalePrice),
           unit: sanitizeString(pData.unit, 'un'),
+          category: sanitizeString(pData.category, 'Geral'),
           active: pData.active !== false,
           stockQuantity: typeof pData.stockQuantity === 'number' ? pData.stockQuantity : undefined,
           imageUrl: typeof pData.imageUrl === 'string' ? pData.imageUrl : undefined,
@@ -898,19 +926,11 @@ export async function getPublicCatalog(idOrSlug: string): Promise<{
   }
 }
 
-export async function getPublicCatalogItems(businessId: string): Promise<Array<{
-  id: string;
-  name: string;
-  price: number;
-  unit: string;
-  imageUrl?: string;
-  active: boolean;
-  inStock?: boolean;
-}>> {
+export async function getPublicCatalogItems(businessId: string): Promise<PublicCatalogItem[]> {
   try {
     const itemsCol = collection(db, 'publicCatalog', businessId, 'items');
     const snap = await getDocs(itemsCol);
-    const items = snap.docs
+    const items: PublicCatalogItem[] = snap.docs
       .map((d) => {
         const dData = sanitizeDocData(d.data());
         return {
@@ -918,6 +938,7 @@ export async function getPublicCatalogItems(businessId: string): Promise<Array<{
           name: sanitizeString(dData.name, 'Produto'),
           price: sanitizeNumber(dData.price, 0),
           unit: sanitizeString(dData.unit, 'un'),
+          category: sanitizeString(dData.category, 'Geral'),
           imageUrl: typeof dData.imageUrl === 'string' && dData.imageUrl ? dData.imageUrl : undefined,
           active: dData.active !== false,
           inStock: dData.inStock !== false,

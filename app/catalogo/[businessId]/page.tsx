@@ -31,6 +31,7 @@ export default function PublicCatalogPage() {
   const [items, setItems] = useState<PublicCatalogItem[]>([]);
   const [cart, setCart] = useState<Record<string, number>>({});
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('Todos');
   const [isNotFound, setIsNotFound] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -165,7 +166,28 @@ export default function PublicCatalogPage() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  // Lista de categorias distintas presentes em "items" na ordem em que aparecem
+  const distinctCategories = Array.from(
+    new Set(
+      items.map((item) => (item.category && item.category.trim()) ? item.category.trim() : 'Geral')
+    )
+  );
+  const categories = ['Todos', ...distinctCategories];
+
+  const isCategoryFilterActive =
+    selectedCategory !== 'Todos' &&
+    distinctCategories.some((c) => c.toLowerCase() === selectedCategory.toLowerCase());
+
   const filteredItems = items.filter((item) => {
+    // Filtro por categoria
+    if (isCategoryFilterActive) {
+      const itemCat = (item.category && item.category.trim()) ? item.category.trim() : 'Geral';
+      if (itemCat.toLowerCase() !== selectedCategory.toLowerCase()) {
+        return false;
+      }
+    }
+
+    // Filtro por busca de nome
     const q = searchTerm.trim().toLowerCase();
     if (!q) return true;
     return (item.name || '').toLowerCase().includes(q);
@@ -264,6 +286,27 @@ export default function PublicCatalogPage() {
               />
             </div>
 
+            {/* Category Chips (só exibe se houver mais de uma categoria distinta) */}
+            {distinctCategories.length > 1 && (
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                {categories.map((cat) => (
+                  <button
+                    key={cat}
+                    id={`filter-cat-${cat.toLowerCase().replace(/\s+/g, '-')}`}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer active:scale-95 ${
+                      selectedCategory.toLowerCase() === cat.toLowerCase()
+                        ? 'bg-amber-700 text-white shadow-sm'
+                        : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                    }`}
+                  >
+                    {cat === 'Todos' ? 'Todos os Produtos' : cat}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Product Count / Filter Feedback */}
             <div className="flex items-center justify-between text-xs text-neutral-500 px-1 font-medium">
               <span>
@@ -271,13 +314,16 @@ export default function PublicCatalogPage() {
                   ? '1 produto encontrado'
                   : `${filteredItems.length} produtos disponíveis`}
               </span>
-              {searchTerm && (
+              {(searchTerm || selectedCategory !== 'Todos') && (
                 <button
                   type="button"
-                  onClick={() => setSearchTerm('')}
+                  onClick={() => {
+                    setSearchTerm('');
+                    setSelectedCategory('Todos');
+                  }}
                   className="text-amber-700 font-semibold hover:underline"
                 >
-                  Limpar busca
+                  Limpar filtros
                 </button>
               )}
             </div>
@@ -290,10 +336,22 @@ export default function PublicCatalogPage() {
                   Nenhum produto encontrado
                 </p>
                 <p className="text-xs text-neutral-400">
-                  {searchTerm
-                    ? `Não encontramos itens com "${searchTerm}".`
+                  {searchTerm || selectedCategory !== 'Todos'
+                    ? 'Não encontramos produtos com os filtros selecionados.'
                     : 'Ainda não há produtos cadastrados neste catálogo.'}
                 </p>
+                {(searchTerm || selectedCategory !== 'Todos') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setSelectedCategory('Todos');
+                    }}
+                    className="mt-2 text-xs font-bold text-amber-800 hover:text-amber-900 underline"
+                  >
+                    Limpar filtros
+                  </button>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
