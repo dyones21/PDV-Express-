@@ -31,7 +31,6 @@ import {
   FileText,
   Loader2,
 } from 'lucide-react';
-import { shareReceiptPdf, downloadReceiptPdf } from '@/lib/receiptPdf';
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   dinheiro: 'Dinheiro',
@@ -741,6 +740,66 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
     }
   };
 
+  const handleShareWhatsApp = (sale: any) => {
+    if (!sale) return;
+    const hasSaleDiscount = typeof sale.discountAmount === 'number' && sale.discountAmount > 0;
+    const itemsListText = (sale.items || []).map((i: any) => `• ${i.quantity}x ${i.productName} - ${formatCurrency(i.subtotal)}`).join('\n');
+
+    let totalSectionText = '';
+    if (hasSaleDiscount) {
+      const subtotal = (sale.items || []).reduce((acc: number, item: any) => acc + (item.subtotal || 0), 0);
+      totalSectionText = `\n\n*Subtotal:* ${formatCurrency(subtotal)}\n` +
+        `*Desconto:* -${formatCurrency(sale.discountAmount)}\n` +
+        `*Total:* ${formatCurrency(sale.totalAmount)}\n`;
+    } else {
+      totalSectionText = `\n\n*Total:* ${formatCurrency(sale.totalAmount)}\n`;
+    }
+
+    const hasBreakdown = Array.isArray(sale.paymentBreakdown) && sale.paymentBreakdown.length > 0;
+    const breakdownFormatted = hasBreakdown
+      ? (sale.paymentBreakdown as Array<{ method: string; amount: number }>)
+          .map((b) => `${formatCurrency(b.amount)} (${PAYMENT_METHOD_LABELS[b.method] || b.method})`)
+          .join(' + ')
+      : '';
+
+    let paymentStatusText = '';
+    if (sale.paymentStatus === 'paid') {
+      if (hasBreakdown) {
+        paymentStatusText = `✅ *Status:* Pago à vista\n💳 *Pago:* ${breakdownFormatted}`;
+      } else {
+        paymentStatusText = `✅ *Status:* Pago à vista no ${PAYMENT_METHOD_LABELS[sale.paymentMethod] || sale.paymentMethod}`;
+      }
+    } else if (sale.paymentStatus === 'partial') {
+      if (hasBreakdown) {
+        paymentStatusText = `⏳ *Status:* Pago ${formatCurrency(sale.paidAmount)} | Restante a receber: ${formatCurrency(sale.remainingAmount)}\n💳 *Pago:* ${breakdownFormatted}`;
+      } else {
+        paymentStatusText = `⏳ *Status:* Pago ${formatCurrency(sale.paidAmount)} | Restante a receber: ${formatCurrency(sale.remainingAmount)}`;
+      }
+    } else {
+      paymentStatusText = `⏳ *Status:* Fiado (A receber): ${formatCurrency(sale.remainingAmount)}`;
+    }
+
+    let text = `📦 *Comprovante de Compra - ${business?.name || businessName || 'PDV Express'}*\n\n` +
+      `Olá, *${sale.customerName}*!\n` +
+      `Aqui está o comprovante da sua compra:\n\n` +
+      itemsListText +
+      totalSectionText +
+      paymentStatusText;
+
+    const effectiveNextVisit = selectedReminderDate || sale.nextVisitDate;
+    if (effectiveNextVisit) {
+      text += `\n📅 *Retorno previsto:* ${formatDateBr(effectiveNextVisit)}`;
+    }
+
+    text += `\n\n_Agradecemos a preferência!_`;
+
+    const phone = sale.customerPhone ? sale.customerPhone.replace(/\D/g, '') : '';
+    const url = phone
+      ? `https://wa.me/55${phone}?text=${encodeURIComponent(text)}`
+      : `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
+  };
+
   const [isSharingSuccessPdf, setIsSharingSuccessPdf] = useState(false);
   const [isDownloadingSuccessPdf, setIsDownloadingSuccessPdf] = useState(false);
   const [successPdfNotice, setSuccessPdfNotice] = useState('');
@@ -750,6 +809,7 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
     try {
       setIsSharingSuccessPdf(true);
       setSuccessPdfNotice('');
+      const { shareReceiptPdf } = await import('@/lib/receiptPdf');
       const effectiveNextVisit = selectedReminderDate || sale.nextVisitDate;
       const saleWithReturn = {
         ...sale,
@@ -782,6 +842,7 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
     try {
       setIsDownloadingSuccessPdf(true);
       setSuccessPdfNotice('');
+      const { downloadReceiptPdf } = await import('@/lib/receiptPdf');
       const effectiveNextVisit = selectedReminderDate || sale.nextVisitDate;
       const saleWithReturn = {
         ...sale,
@@ -1764,6 +1825,16 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
             )}
 
             <div className="space-y-2">
+              <button
+                id="btn-share-receipt-whatsapp"
+                type="button"
+                onClick={() => handleShareWhatsApp(successSaleData)}
+                className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow flex items-center justify-center gap-1.5 transition active:scale-95"
+              >
+                <Share2 className="w-4 h-4" />
+                <span>Enviar Recibo no WhatsApp</span>
+              </button>
+
               <div className="flex gap-2">
                 <button
                   id="btn-share-receipt-pdf"
