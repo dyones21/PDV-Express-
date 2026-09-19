@@ -1,1 +1,33 @@
 @import "tailwindcss";
+
+@media print {
+  /* Ocultar toda a interface e elementos do app */
+  body * {
+    visibility: hidden;
+  }
+
+  /* Exibir exclusivamente o recibo */
+  #receipt-print-root,
+  #receipt-print-root * {
+    visibility: visible;
+  }
+
+  #receipt-print-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: 440px !important;
+    margin: 0 auto !important;
+    padding: 12px !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    display: block !important;
+  }
+
+  @page {
+    margin: 6mm;
+    size: auto;
+  }
+}

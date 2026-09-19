@@ -27,6 +27,7 @@ export default function PublicCatalogPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [businessName, setBusinessName] = useState<string>('');
   const [orderWhatsapp, setOrderWhatsapp] = useState<string>('');
+  const [logoUrl, setLogoUrl] = useState<string>('');
   const [isCatalogActive, setIsCatalogActive] = useState(true);
   const [items, setItems] = useState<PublicCatalogItem[]>([]);
   const [cart, setCart] = useState<Record<string, number>>({});
@@ -60,6 +61,7 @@ export default function PublicCatalogPage() {
         } else {
           setBusinessName(catalogInfo.businessName || 'Catálogo Virtual');
           setOrderWhatsapp(catalogInfo.orderWhatsapp || '');
+          setLogoUrl(catalogInfo.logoUrl || '');
           setIsCatalogActive(true);
 
           // Carrega os itens a partir do ID real do negócio
@@ -199,9 +201,17 @@ export default function PublicCatalogPage() {
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-neutral-200 px-4 py-3 shadow-2xs">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-amber-700 text-white flex items-center justify-center flex-shrink-0 shadow-xs">
-              <Store className="w-5 h-5" />
-            </div>
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt={businessName || 'Logo'}
+                className="w-10 h-10 rounded-xl object-contain bg-white border border-neutral-200/80 p-0.5 shadow-xs flex-shrink-0"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-xl bg-amber-700 text-white flex items-center justify-center flex-shrink-0 shadow-xs">
+                <Store className="w-5 h-5" />
+              </div>
+            )}
             <div className="min-w-0">
               <h1 className="text-base font-extrabold text-neutral-900 truncate leading-tight">
                 {businessName || 'Catálogo de Produtos'}

@@ -7,6 +7,7 @@ export interface Business {
   active?: boolean;
   slug?: string;
   orderWhatsapp?: string;
+  logoUrl?: string;
 }
 
 export interface Seller {
@@ -72,6 +73,7 @@ export interface PublicCatalog {
   active: boolean;
   slug?: string;
   orderWhatsapp?: string;
+  logoUrl?: string;
   updatedAt?: string;
 }
 
@@ -116,6 +118,7 @@ export interface Sale {
   cancelledAt?: string;
   cancelledBy?: string;
   cancellationReason?: string;
+  nextVisitDate?: string; // YYYY-MM-DD (data de retorno ou próxima visita combinada)
 }
 
 export interface Payment {

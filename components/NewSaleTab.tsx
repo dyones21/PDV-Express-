@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { Customer, Product, SaleItem, PaymentStatus, PaymentMethod, PriceTable } from '@/types';
+import React, { useState, useRef, useEffect } from 'react';
+import { Customer, Product, SaleItem, PaymentStatus, PaymentMethod, PriceTable, Business } from '@/types';
 import { formatCurrency, formatCurrencyInput, parseCurrencyToNumber, formatPhone, getTodayDateString, formatDateBr } from '@/lib/format';
 import { useSellerAuth } from '@/hooks/use-seller-auth';
 import { useNetworkSync } from '@/hooks/use-network-sync';
 import { useBusiness } from '@/context/BusinessContext';
-import { recordSale, addCustomer, updateCustomer } from '@/lib/db';
+import { recordSale, addCustomer, updateCustomer, updateSale, subscribeBusiness } from '@/lib/db';
 import { 
   User, 
   Search, 
@@ -27,7 +27,11 @@ import {
   AlertTriangle,
   Tag,
   Layers,
+  Download,
+  FileText,
+  Loader2,
 } from 'lucide-react';
+import { shareReceiptPdf, downloadReceiptPdf } from '@/lib/receiptPdf';
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   dinheiro: 'Dinheiro',
@@ -45,9 +49,19 @@ interface NewSaleTabProps {
 }
 
 export function NewSaleTab({ customers, products, priceTables = [], onSaleCompleted, onSearchFocusChange }: NewSaleTabProps) {
-  const { businessId } = useBusiness();
+  const { businessId, businessName } = useBusiness();
   const { activeSeller } = useSellerAuth();
   const { isOnline } = useNetworkSync();
+
+  const [business, setBusiness] = useState<Business | null>(null);
+
+  useEffect(() => {
+    if (!businessId) return;
+    const unsub = subscribeBusiness(businessId, (b) => {
+      if (b) setBusiness(b);
+    });
+    return () => unsub();
+  }, [businessId]);
 
   // State: Customer
   const [isAnonymous, setIsAnonymous] = useState(false);
@@ -398,34 +412,52 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
   };
 
   const handleSelectReminderDays = async (days: number) => {
-    if (!successSaleData?.customerId) return;
+    if (!successSaleData) return;
     const calculatedDate = calculateDaysFromToday(days);
     try {
       setIsSavingReminder(true);
-      await updateCustomer(businessId, successSaleData.customerId, {
-        nextVisitReminder: calculatedDate,
-      });
+      if (successSaleData.customerId) {
+        await updateCustomer(businessId, successSaleData.customerId, {
+          nextVisitReminder: calculatedDate,
+        });
+      }
+      if (successSaleData.id) {
+        await updateSale(businessId, successSaleData.id, {
+          nextVisitDate: calculatedDate,
+        });
+      }
       setSelectedReminderDate(calculatedDate);
+      setSuccessSaleData((prev: any) => prev ? { ...prev, nextVisitDate: calculatedDate } : prev);
     } catch (err: any) {
       console.warn('Erro ao salvar lembrete de visita:', err);
       setSelectedReminderDate(calculatedDate);
+      setSuccessSaleData((prev: any) => prev ? { ...prev, nextVisitDate: calculatedDate } : prev);
     } finally {
       setIsSavingReminder(false);
     }
   };
 
   const handleSaveCustomReminder = async (dateStr: string) => {
-    if (!successSaleData?.customerId || !dateStr) return;
+    if (!successSaleData || !dateStr) return;
     try {
       setIsSavingReminder(true);
-      await updateCustomer(businessId, successSaleData.customerId, {
-        nextVisitReminder: dateStr,
-      });
+      if (successSaleData.customerId) {
+        await updateCustomer(businessId, successSaleData.customerId, {
+          nextVisitReminder: dateStr,
+        });
+      }
+      if (successSaleData.id) {
+        await updateSale(businessId, successSaleData.id, {
+          nextVisitDate: dateStr,
+        });
+      }
       setSelectedReminderDate(dateStr);
+      setSuccessSaleData((prev: any) => prev ? { ...prev, nextVisitDate: dateStr } : prev);
       setIsCustomDatePickerOpen(false);
     } catch (err: any) {
       console.warn('Erro ao salvar lembrete de visita:', err);
       setSelectedReminderDate(dateStr);
+      setSuccessSaleData((prev: any) => prev ? { ...prev, nextVisitDate: dateStr } : prev);
       setIsCustomDatePickerOpen(false);
     } finally {
       setIsSavingReminder(false);
@@ -709,62 +741,70 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
     }
   };
 
-  const handleShareWhatsApp = (sale: any) => {
-    const hasSaleDiscount = typeof sale.discountAmount === 'number' && sale.discountAmount > 0;
-    const itemsListText = sale.items.map((i: any) => `• ${i.quantity}x ${i.productName} - ${formatCurrency(i.subtotal)}`).join('\n');
+  const [isSharingSuccessPdf, setIsSharingSuccessPdf] = useState(false);
+  const [isDownloadingSuccessPdf, setIsDownloadingSuccessPdf] = useState(false);
+  const [successPdfNotice, setSuccessPdfNotice] = useState('');
 
-    let totalSectionText = '';
-    if (hasSaleDiscount) {
-      const subtotal = sale.items.reduce((acc: number, item: any) => acc + (item.subtotal || 0), 0);
-      totalSectionText = `\n\n*Subtotal:* ${formatCurrency(subtotal)}\n` +
-        `*Desconto:* -${formatCurrency(sale.discountAmount)}\n` +
-        `*Total:* ${formatCurrency(sale.totalAmount)}\n`;
-    } else {
-      totalSectionText = `\n\n*Total:* ${formatCurrency(sale.totalAmount)}\n`;
-    }
-
-    const hasBreakdown = Array.isArray(sale.paymentBreakdown) && sale.paymentBreakdown.length > 0;
-    const breakdownFormatted = hasBreakdown
-      ? (sale.paymentBreakdown as Array<{ method: string; amount: number }>)
-          .map((b) => `${formatCurrency(b.amount)} (${PAYMENT_METHOD_LABELS[b.method] || b.method})`)
-          .join(' + ')
-      : '';
-
-    let paymentStatusText = '';
-    if (sale.paymentStatus === 'paid') {
-      if (hasBreakdown) {
-        paymentStatusText = `✅ *Status:* Pago à vista\n💳 *Pago:* ${breakdownFormatted}`;
-      } else {
-        paymentStatusText = `✅ *Status:* Pago à vista no ${sale.paymentMethod}`;
+  const handleShareSuccessPdf = async (sale: any) => {
+    if (!sale) return;
+    try {
+      setIsSharingSuccessPdf(true);
+      setSuccessPdfNotice('');
+      const effectiveNextVisit = selectedReminderDate || sale.nextVisitDate;
+      const saleWithReturn = {
+        ...sale,
+        nextVisitDate: effectiveNextVisit,
+      };
+      const res = await shareReceiptPdf({
+        sale: saleWithReturn,
+        business: business || {
+          id: businessId,
+          name: businessName,
+          createdAt: '',
+        },
+        nextVisitDate: effectiveNextVisit,
+      });
+      if (res.message) {
+        setSuccessPdfNotice(res.message);
+        setTimeout(() => setSuccessPdfNotice(''), 4500);
       }
-    } else if (sale.paymentStatus === 'partial') {
-      if (hasBreakdown) {
-        paymentStatusText = `⏳ *Status:* Pago ${formatCurrency(sale.paidAmount)} | Restante a receber: ${formatCurrency(sale.remainingAmount)}\n💳 *Pago:* ${breakdownFormatted}`;
-      } else {
-        paymentStatusText = `⏳ *Status:* Pago ${formatCurrency(sale.paidAmount)} | Restante a receber: ${formatCurrency(sale.remainingAmount)}`;
-      }
-    } else {
-      paymentStatusText = `⏳ *Status:* Fiado (A receber): ${formatCurrency(sale.remainingAmount)}`;
+    } catch (err: any) {
+      console.error('Erro ao compartilhar PDF:', err);
+      setSuccessPdfNotice('Não foi possível compartilhar o recibo em PDF.');
+      setTimeout(() => setSuccessPdfNotice(''), 4000);
+    } finally {
+      setIsSharingSuccessPdf(false);
     }
+  };
 
-    let text = `📦 *Comprovante de Compra - PDV Express*\n\n` +
-      `Olá, *${sale.customerName}*!\n` +
-      `Aqui está o comprovante da sua compra:\n\n` +
-      itemsListText +
-      totalSectionText +
-      paymentStatusText;
-
-    if (selectedReminderDate) {
-      text += `\n📅 *Retorno previsto:* ${formatDateBr(selectedReminderDate)}`;
+  const handleDownloadSuccessPdf = async (sale: any) => {
+    if (!sale) return;
+    try {
+      setIsDownloadingSuccessPdf(true);
+      setSuccessPdfNotice('');
+      const effectiveNextVisit = selectedReminderDate || sale.nextVisitDate;
+      const saleWithReturn = {
+        ...sale,
+        nextVisitDate: effectiveNextVisit,
+      };
+      await downloadReceiptPdf({
+        sale: saleWithReturn,
+        business: business || {
+          id: businessId,
+          name: businessName,
+          createdAt: '',
+        },
+        nextVisitDate: effectiveNextVisit,
+      });
+      setSuccessPdfNotice('Recibo em PDF baixado com sucesso!');
+      setTimeout(() => setSuccessPdfNotice(''), 4000);
+    } catch (err: any) {
+      console.error('Erro ao baixar recibo PDF:', err);
+      setSuccessPdfNotice('Erro ao gerar o arquivo PDF.');
+      setTimeout(() => setSuccessPdfNotice(''), 4000);
+    } finally {
+      setIsDownloadingSuccessPdf(false);
     }
-
-    text += `\n\n_Agradecemos a preferência!_`;
-
-    const phone = sale.customerPhone ? sale.customerPhone.replace(/\D/g, '') : '';
-    const url = phone
-      ? `https://wa.me/55${phone}?text=${encodeURIComponent(text)}`
-      : `https://wa.me/?text=${encodeURIComponent(text)}`;
-    window.open(url, '_blank');
   };
 
   return (
@@ -1533,13 +1573,13 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
               </div>
             )}
 
-            <div className="my-4 p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-left space-y-1 text-xs">
-              <div className="flex justify-between font-semibold text-neutral-800">
-                <span>Cliente:</span>
-                <span className="font-bold">{successSaleData.customerName}</span>
+            <div className="my-4 p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-left space-y-1.5 text-xs">
+              <div className="flex justify-between items-start gap-2 font-semibold text-neutral-800">
+                <span className="text-neutral-500 shrink-0">Cliente:</span>
+                <span className="font-bold text-neutral-900 text-right break-words flex-1">{successSaleData.customerName}</span>
               </div>
               <div className="flex justify-between font-semibold text-neutral-800">
-                <span>Total:</span>
+                <span className="text-neutral-500">Total:</span>
                 <span className="font-extrabold text-amber-900">
                   {formatCurrency(successSaleData.totalAmount)}
                 </span>
@@ -1551,7 +1591,7 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
                 </div>
               )}
               <div className="flex justify-between font-semibold text-neutral-800">
-                <span>Status:</span>
+                <span className="text-neutral-500">Status:</span>
                 <span
                   className={`font-bold ${
                     successSaleData.paymentStatus === 'paid' ? 'text-emerald-700' : 'text-amber-800'
@@ -1564,6 +1604,17 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
                     : 'Ficou Fiado'}
                 </span>
               </div>
+              {(selectedReminderDate || successSaleData.nextVisitDate) && (
+                <div className="flex justify-between items-center bg-amber-100/70 text-amber-950 px-2.5 py-1.5 rounded-lg border border-amber-300/80 font-bold text-xs animate-in fade-in">
+                  <span className="flex items-center gap-1 text-amber-800">
+                    <CalendarClock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                    <span>Retorno Agendado:</span>
+                  </span>
+                  <span className="text-amber-950 font-extrabold">
+                    {formatDateBr(selectedReminderDate || successSaleData.nextVisitDate)}
+                  </span>
+                </div>
+              )}
               {successSaleData.paymentBreakdown && successSaleData.paymentBreakdown.length > 0 && (
                 <div className="flex justify-between font-semibold text-neutral-800">
                   <span>Formas:</span>
@@ -1705,16 +1756,45 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
               </div>
             )}
 
+            {successPdfNotice && (
+              <div className="p-2.5 bg-neutral-900 text-white text-xs font-semibold rounded-xl text-center shadow flex items-center justify-center gap-1.5 animate-in fade-in">
+                <FileText className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>{successPdfNotice}</span>
+              </div>
+            )}
+
             <div className="space-y-2">
-              <button
-                id="btn-share-receipt-whatsapp"
-                type="button"
-                onClick={() => handleShareWhatsApp(successSaleData)}
-                className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow flex items-center justify-center gap-1.5 transition active:scale-95"
-              >
-                <Share2 className="w-4 h-4" />
-                Enviar Comprovante no WhatsApp
-              </button>
+              <div className="flex gap-2">
+                <button
+                  id="btn-share-receipt-pdf"
+                  type="button"
+                  onClick={() => handleShareSuccessPdf(successSaleData)}
+                  disabled={isSharingSuccessPdf}
+                  className="flex-1 py-2.5 px-3 bg-neutral-900 hover:bg-black text-white font-bold text-xs rounded-xl shadow flex items-center justify-center gap-1.5 transition active:scale-95 disabled:opacity-60"
+                >
+                  {isSharingSuccessPdf ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+                  ) : (
+                    <Share2 className="w-4 h-4 text-amber-400" />
+                  )}
+                  <span>{isSharingSuccessPdf ? 'Gerando...' : 'Compartilhar Recibo PDF'}</span>
+                </button>
+                <button
+                  id="btn-download-receipt-pdf"
+                  type="button"
+                  onClick={() => handleDownloadSuccessPdf(successSaleData)}
+                  disabled={isDownloadingSuccessPdf}
+                  className="py-2.5 px-3 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-bold text-xs rounded-xl border border-neutral-300 shadow-2xs flex items-center justify-center gap-1.5 transition active:scale-95"
+                  title="Baixar arquivo PDF do recibo"
+                >
+                  {isDownloadingSuccessPdf ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-neutral-600" />
+                  ) : (
+                    <Download className="w-4 h-4 text-neutral-700" />
+                  )}
+                  <span>Baixar PDF</span>
+                </button>
+              </div>
 
               <button
                 id="btn-close-sale-success"
@@ -1725,11 +1805,12 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
                   setReminderSkipped(false);
                   setIsCustomDatePickerOpen(false);
                   setCustomDateInput('');
+                  setSuccessPdfNotice('');
                   onSaleCompleted();
                 }}
-                className="w-full py-2.5 px-4 bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs rounded-xl transition active:scale-95"
+                className="w-full py-2.5 px-4 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl transition active:scale-95 shadow"
               >
-                Próxima Venda / Ver Resumo
+                Próxima Venda / Concluir
               </button>
             </div>
           </div>

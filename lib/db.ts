@@ -156,6 +156,7 @@ export function subscribeBusiness(
         active: data.active !== false,
         slug: typeof data.slug === 'string' && data.slug ? data.slug : undefined,
         orderWhatsapp: typeof data.orderWhatsapp === 'string' && data.orderWhatsapp ? data.orderWhatsapp : undefined,
+        logoUrl: typeof data.logoUrl === 'string' && data.logoUrl ? data.logoUrl : undefined,
       } as Business);
     },
     (err) => console.warn('subscribeBusiness error:', err)
@@ -176,6 +177,7 @@ export async function getBusiness(businessId = DEFAULT_BUSINESS_ID): Promise<Bus
       active: data.active !== false,
       slug: typeof data.slug === 'string' && data.slug ? data.slug : undefined,
       orderWhatsapp: typeof data.orderWhatsapp === 'string' && data.orderWhatsapp ? data.orderWhatsapp : undefined,
+      logoUrl: typeof data.logoUrl === 'string' && data.logoUrl ? data.logoUrl : undefined,
     } as Business;
   } catch (err) {
     console.warn('getBusiness error:', err);
@@ -828,11 +830,13 @@ export async function updateBusinessSlug(
     const bSnap = await getDoc(bRef);
     const bName = bSnap.exists() ? sanitizeString(bSnap.data()?.name, 'Meu Catálogo') : 'Meu Catálogo';
     const bOrderWhatsapp = bSnap.exists() && typeof bSnap.data()?.orderWhatsapp === 'string' ? bSnap.data()?.orderWhatsapp : undefined;
+    const bLogoUrl = bSnap.exists() && typeof bSnap.data()?.logoUrl === 'string' ? bSnap.data()?.logoUrl : undefined;
     await setDoc(pcRef, cleanUndefined({
       businessName: bName,
       active: true,
       slug: cleanSlug,
       orderWhatsapp: bOrderWhatsapp,
+      logoUrl: bLogoUrl,
       updatedAt: new Date().toISOString(),
     }));
   }
@@ -869,9 +873,36 @@ export async function updateBusinessOrderWhatsapp(
       active: true,
       slug: bSlug,
       orderWhatsapp: cleanPhone,
+      logoUrl: bSnap.exists() && typeof bSnap.data()?.logoUrl === 'string' ? bSnap.data()?.logoUrl : undefined,
       updatedAt: new Date().toISOString(),
     }));
   }
+}
+
+/**
+ * Atualiza a logo do negócio tanto em businesses/{businessId} quanto em publicCatalog/{businessId}.
+ */
+export async function updateBusinessLogo(
+  businessId = DEFAULT_BUSINESS_ID,
+  logoUrl: string
+): Promise<void> {
+  await ensureAuthSession();
+  const cleanUrl = logoUrl.trim();
+
+  // 1. Gravar campo logoUrl em businesses/{businessId} de forma segura com merge
+  const bRef = getBusinessRef(businessId);
+  await setDoc(bRef, { logoUrl: cleanUrl }, { merge: true });
+
+  // 2. Replicar esse campo no documento publicCatalog/{businessId} com merge
+  const pcRef = doc(db, 'publicCatalog', businessId);
+  await setDoc(
+    pcRef,
+    {
+      logoUrl: cleanUrl,
+      updatedAt: new Date().toISOString(),
+    },
+    { merge: true }
+  );
 }
 
 export async function getPublicCatalog(idOrSlug: string): Promise<{
@@ -880,6 +911,7 @@ export async function getPublicCatalog(idOrSlug: string): Promise<{
   active: boolean;
   slug?: string;
   orderWhatsapp?: string;
+  logoUrl?: string;
 } | null> {
   try {
     if (!idOrSlug) return null;
@@ -896,6 +928,7 @@ export async function getPublicCatalog(idOrSlug: string): Promise<{
         active: data.active !== false,
         slug: typeof data.slug === 'string' && data.slug ? data.slug : undefined,
         orderWhatsapp: typeof data.orderWhatsapp === 'string' && data.orderWhatsapp ? data.orderWhatsapp : undefined,
+        logoUrl: typeof data.logoUrl === 'string' && data.logoUrl ? data.logoUrl : undefined,
       };
     }
 
@@ -915,6 +948,7 @@ export async function getPublicCatalog(idOrSlug: string): Promise<{
         active: data.active !== false,
         slug: typeof data.slug === 'string' && data.slug ? data.slug : undefined,
         orderWhatsapp: typeof data.orderWhatsapp === 'string' && data.orderWhatsapp ? data.orderWhatsapp : undefined,
+        logoUrl: typeof data.logoUrl === 'string' && data.logoUrl ? data.logoUrl : undefined,
       };
     }
 
@@ -1090,6 +1124,18 @@ export async function recordSale(
   }
 
   return { saleId: docRef.id, warnings };
+}
+
+export async function updateSale(
+  businessId = DEFAULT_BUSINESS_ID,
+  saleId: string,
+  data: Partial<Sale>
+): Promise<void> {
+  await ensureAuthSession();
+  const sRef = doc(getSalesCol(businessId), saleId);
+  await updateDoc(sRef, cleanUndefined({
+    ...data,
+  }));
 }
 
 export async function cancelSale(

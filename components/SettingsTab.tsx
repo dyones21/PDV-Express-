@@ -13,13 +13,15 @@ import {
   isCatalogSlugAvailable, 
   updateBusinessSlug,
   updateBusinessOrderWhatsapp,
+  updateBusinessLogo,
   addPriceTable,
   updatePriceTable
 } from '@/lib/db';
 import { formatPhone } from '@/lib/format';
 import { ConfirmDialog } from './ConfirmDialog';
 import { signOut } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { auth, storage } from '@/lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
   Settings, 
   Users, 
@@ -45,9 +47,76 @@ import {
   ExternalLink,
   MessageSquare,
   Tag,
-  Percent
+  Percent,
+  Image as ImageIcon,
+  Upload,
+  Camera
 } from 'lucide-react';
 import { SellerSwitchModal } from './SellerSwitchModal';
+
+/**
+ * Redimensiona e otimiza a imagem no navegador usando HTML5 Canvas:
+ * Limita a largura a 360px mantendo a proporção original,
+ * converte para JPEG com compressão inteligente (~0.75 de qualidade),
+ * e gera tanto o Blob quanto a DataURL (Base64 compacta ~15-25KB).
+ */
+function processAndCompressImage(
+  file: File,
+  maxWidth = 360,
+  quality = 0.75
+): Promise<{ blob: Blob; dataUrl: string }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Canvas 2D context indisponível'));
+          return;
+        }
+
+        // Fundo branco caso a imagem original possua transparência
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve({ blob, dataUrl });
+            } else {
+              resolve({
+                blob: new Blob([], { type: 'image/jpeg' }),
+                dataUrl,
+              });
+            }
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+      img.onerror = () => reject(new Error('Falha ao ler arquivo de imagem'));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error('Falha ao carregar arquivo'));
+    reader.readAsDataURL(file);
+  });
+}
 
 interface SettingsTabProps {
   sellers: Seller[];
@@ -106,6 +175,15 @@ export function SettingsTab({ sellers, sales = [], customers = [], priceTables =
   const [whatsappSuccess, setWhatsappSuccess] = useState('');
   const [isSavingWhatsapp, setIsSavingWhatsapp] = useState(false);
 
+  // Logo do Negócio (Exclusivo para Dono)
+  const [currentLogoUrl, setCurrentLogoUrl] = useState('');
+  const [logoPreview, setLogoPreview] = useState('');
+  const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [logoError, setLogoError] = useState('');
+  const [logoSuccess, setLogoSuccess] = useState('');
+  const logoInputRef = React.useRef<HTMLInputElement | null>(null);
+
   useEffect(() => {
     if (!businessId) return;
     const unsub = subscribeBusiness(businessId, (b) => {
@@ -117,9 +195,107 @@ export function SettingsTab({ sellers, sales = [], customers = [], priceTables =
         setSavedWhatsapp(b.orderWhatsapp);
         setOrderWhatsapp((prev) => (prev === '' ? formatPhone(b.orderWhatsapp) : prev));
       }
+      if (b?.logoUrl !== undefined) {
+        setCurrentLogoUrl(b.logoUrl || '');
+      }
     });
     return () => unsub();
   }, [businessId]);
+
+  const handleLogoFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setLogoError('Selecione um arquivo de imagem válido (JPG ou PNG).');
+      return;
+    }
+    setLogoError('');
+    setSelectedLogoFile(file);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setLogoPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleUploadLogo = async () => {
+    if (!selectedLogoFile) return;
+    try {
+      setIsUploadingLogo(true);
+      setLogoError('');
+      setLogoSuccess('');
+
+      // 1. Processa e gera imagem compactada no cliente (Canvas -> JPEG otimizado ~15-25KB)
+      const { blob, dataUrl } = await processAndCompressImage(selectedLogoFile, 360, 0.75);
+
+      let finalLogoUrl = dataUrl;
+
+      // 2. Tenta salvar no Firebase Storage se houver permissão;
+      // Caso Storage não esteja liberado (storage/unauthorized) ou ocorra falha de rede/permissão,
+      // utiliza com total segurança o Base64 otimizado diretamente no Firestore.
+      try {
+        const storageRef = ref(storage, `businesses/${businessId}/logo.jpg`);
+        await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
+        const downloadUrl = await getDownloadURL(storageRef);
+        if (downloadUrl) {
+          finalLogoUrl = downloadUrl;
+        }
+      } catch (storageErr) {
+        console.warn('Firebase Storage com restrição de permissão (storage/unauthorized). Gravando logo em formato otimizado no Firestore:', storageErr);
+        finalLogoUrl = dataUrl;
+      }
+
+      // 3. Atualiza os documentos da empresa e catálogo público no Firestore
+      await updateBusinessLogo(businessId, finalLogoUrl);
+
+      setCurrentLogoUrl(finalLogoUrl);
+      setSelectedLogoFile(null);
+      setLogoPreview('');
+      if (logoInputRef.current) {
+        logoInputRef.current.value = '';
+      }
+      setLogoSuccess('Logo atualizada com sucesso!');
+      setTimeout(() => setLogoSuccess(''), 4000);
+    } catch (err: any) {
+      console.error('Erro ao enviar logo:', err);
+      setLogoError('Erro ao salvar a logo: ' + (err?.message || 'Tente novamente.'));
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    if (typeof window !== 'undefined' && !window.confirm('Deseja realmente remover a logo do seu negócio?')) return;
+    try {
+      setIsUploadingLogo(true);
+      setLogoError('');
+      setLogoSuccess('');
+
+      await updateBusinessLogo(businessId, '');
+      setCurrentLogoUrl('');
+      setSelectedLogoFile(null);
+      setLogoPreview('');
+      if (logoInputRef.current) {
+        logoInputRef.current.value = '';
+      }
+      setLogoSuccess('Logo removida com sucesso!');
+      setTimeout(() => setLogoSuccess(''), 3000);
+    } catch (err: any) {
+      console.error('Erro ao remover logo:', err);
+      setLogoError('Erro ao remover a logo: ' + (err?.message || 'Tente novamente.'));
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
+  const handleCancelLogoSelect = () => {
+    setSelectedLogoFile(null);
+    setLogoPreview('');
+    setLogoError('');
+    if (logoInputRef.current) {
+      logoInputRef.current.value = '';
+    }
+  };
 
   const handleSaveOrderWhatsapp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -792,6 +968,132 @@ export function SettingsTab({ sellers, sales = [], customers = [], priceTables =
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Logo do Negócio (Visível somente para o Dono) */}
+      {isOwner && (
+        <div className="bg-white rounded-2xl p-4 border border-neutral-200/80 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ImageIcon className="w-4 h-4 text-amber-700" />
+              <h3 className="text-sm font-bold text-neutral-900">Logo do Negócio</h3>
+            </div>
+            <span className="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full">
+              👑 Dono
+            </span>
+          </div>
+
+          <p className="text-xs text-neutral-600">
+            Sua logo será exibida no cabeçalho do catálogo virtual e no topo dos recibos de venda impressos.
+          </p>
+
+          <div className="flex flex-col sm:flex-row items-center gap-4 pt-1">
+            {/* Preview Box */}
+            <div className="relative w-24 h-24 rounded-2xl border-2 border-dashed border-neutral-300 bg-neutral-50 flex items-center justify-center overflow-hidden flex-shrink-0">
+              {logoPreview || currentLogoUrl ? (
+                <img
+                  src={logoPreview || currentLogoUrl}
+                  alt="Pré-visualização da Logo"
+                  className="w-full h-full object-contain p-1"
+                />
+              ) : (
+                <div className="text-center p-2">
+                  <Camera className="w-6 h-6 text-neutral-400 mx-auto mb-1" />
+                  <span className="text-[10px] font-semibold text-neutral-400 block">Sem logo</span>
+                </div>
+              )}
+            </div>
+
+            {/* Upload controls */}
+            <div className="flex-1 w-full space-y-2">
+              <input
+                ref={logoInputRef}
+                id="input-business-logo"
+                type="file"
+                accept="image/*"
+                onChange={handleLogoFileSelect}
+                className="hidden"
+              />
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  id="btn-choose-business-logo"
+                  onClick={() => logoInputRef.current?.click()}
+                  className="px-3 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-neutral-300 shadow-2xs"
+                >
+                  <Upload className="w-3.5 h-3.5 text-neutral-600" />
+                  <span>{currentLogoUrl || logoPreview ? 'Trocar Imagem' : 'Escolher Imagem'}</span>
+                </button>
+
+                {currentLogoUrl && !selectedLogoFile && (
+                  <button
+                    type="button"
+                    id="btn-remove-business-logo"
+                    disabled={isUploadingLogo}
+                    onClick={handleRemoveLogo}
+                    className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-red-200 shadow-2xs disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Remover</span>
+                  </button>
+                )}
+
+                {selectedLogoFile && (
+                  <>
+                    <button
+                      type="button"
+                      id="btn-upload-business-logo"
+                      disabled={isUploadingLogo}
+                      onClick={handleUploadLogo}
+                      className="px-3.5 py-2 bg-amber-700 hover:bg-amber-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm active:scale-98"
+                    >
+                      {isUploadingLogo ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Salvando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Salvar Logo</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isUploadingLogo}
+                      onClick={handleCancelLogoSelect}
+                      className="px-2.5 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-600 rounded-xl text-xs font-semibold transition"
+                      title="Cancelar alteração"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
+              </div>
+
+              <span className="text-[11px] text-neutral-500 block">
+                Formatos recomendados: JPG ou PNG. A imagem é redimensionada e otimizada automaticamente.
+              </span>
+            </div>
+          </div>
+
+          {logoError && (
+            <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-1.5 animate-in fade-in">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{logoError}</span>
+            </div>
+          )}
+
+          {logoSuccess && (
+            <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-center gap-1.5 animate-in fade-in">
+              <Check className="w-4 h-4 flex-shrink-0 text-emerald-600" />
+              <span>{logoSuccess}</span>
+            </div>
+          )}
         </div>
       )}
 
