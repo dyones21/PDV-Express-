@@ -1,12 +1,12 @@
 {
   "projectId": "pdvexpress-c286f",
-  "appId": "1:620221913117:web:14a29c0d77a0ce336c8ef4",
+  "appId": "1:620221913117:web:69b76ad504e2359b6c8ef4",
   "apiKey": "AIzaSyB2c_2lz1RL4XZwonD1mZ8u_K_n3GuZBKM",
   "authDomain": "pdvexpress-c286f.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-controledevendas-2e004577-c4f3-4b93-a90d-4edcfd2f6dd5",
+  "firestoreDatabaseId": "(default)",
   "storageBucket": "pdvexpress-c286f.firebasestorage.app",
   "messagingSenderId": "620221913117",
   "measurementId": "",
-  "oAuthClientId": "620221913117-ppidcrhdo7e8d6f8qfbnu80fcutjht8b.apps.googleusercontent.com",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }
