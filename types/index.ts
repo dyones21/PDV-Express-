@@ -1,3 +1,5 @@
+import { Timestamp } from 'firebase/firestore';
+
 export interface Business {
   id: string;
   name: string;
@@ -5,9 +7,19 @@ export interface Business {
   ownerUid?: string;
   createdAt: string;
   active?: boolean;
+  trialEndsAt?: Timestamp;
   slug?: string;
   orderWhatsapp?: string;
   logoUrl?: string;
+}
+
+export interface BusinessNotice {
+  id: string;
+  title: string;
+  message: string;
+  type: 'payment_reminder' | 'update' | 'general';
+  createdAt: string;
+  read: boolean;
 }
 
 export interface Seller {

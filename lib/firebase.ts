@@ -199,8 +199,37 @@ export async function setUserBusinessMap(
   );
 }
 
+export interface BusinessAccessDetails {
+  active: boolean;
+  isTrialExpired: boolean;
+}
+
+/**
+ * Consulta o documento raiz businesses/{businessId} e retorna detalhes de acesso,
+ * identificando se o negócio está ativo ou se o período de teste expirou.
+ */
+export async function getBusinessAccessDetails(businessId: string): Promise<BusinessAccessDetails> {
+  if (!businessId) return { active: false, isTrialExpired: false };
+  try {
+    const docRef = doc(db, 'businesses', businessId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      if (data?.trialEndsAt && data.trialEndsAt.toDate() < new Date()) {
+        return { active: false, isTrialExpired: true };
+      }
+      return { active: data?.active === true, isTrialExpired: false };
+    }
+    return { active: false, isTrialExpired: false };
+  } catch (err) {
+    console.warn('Erro ao verificar detalhes de acesso do negócio:', err);
+    return { active: false, isTrialExpired: false };
+  }
+}
+
 /**
  * Consulta o documento raiz businesses/{businessId} e retorna se o negócio está ativo (active === true).
+ * Retorna false também caso o período de teste (trialEndsAt) tenha expirado.
  * A liberação é restrita exclusivamente ao administrador da plataforma.
  */
 export async function getBusinessActiveStatus(businessId: string): Promise<boolean> {
@@ -210,6 +239,7 @@ export async function getBusinessActiveStatus(businessId: string): Promise<boole
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const data = docSnap.data();
+      if (data?.trialEndsAt && data.trialEndsAt.toDate() < new Date()) return false;
       return data?.active === true;
     }
     return false;

@@ -32,10 +32,12 @@ import {
   resolveBusinessId, 
   resolveUserBusiness, 
   getBusinessActiveStatus,
+  getBusinessAccessDetails,
+  BusinessAccessDetails,
   DEFAULT_BUSINESS_ID as FALLBACK_BUSINESS_ID 
 } from '@/lib/firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
-import { AlertCircle, RefreshCw, LogOut, MessageCircle } from 'lucide-react';
+import { AlertCircle, RefreshCw, LogOut, MessageCircle, Clock } from 'lucide-react';
 
 function MainAppContent() {
   const { businessId } = useBusiness();
@@ -221,6 +223,7 @@ export default function HomePage() {
   const [resolvedBusinessId, setResolvedBusinessId] = useState<string | null | undefined>(undefined);
   const [businessName, setBusinessName] = useState<string>('Meu Negócio');
   const [isBusinessActive, setIsBusinessActive] = useState<boolean>(true);
+  const [businessAccess, setBusinessAccess] = useState<BusinessAccessDetails | null>(null);
   const [isResolving, setIsResolving] = useState<boolean>(false);
   const [authView, setAuthView] = useState<'login' | 'signup'>('login');
   const [isSigningUp, setIsSigningUp] = useState(false);
@@ -240,8 +243,9 @@ export default function HomePage() {
 
       if (bId) {
         const bInfo = await resolveUserBusiness(user.uid);
-        const activeStatus = await getBusinessActiveStatus(bId);
-        setIsBusinessActive(activeStatus);
+        const accessDetails = await getBusinessAccessDetails(bId);
+        setBusinessAccess(accessDetails);
+        setIsBusinessActive(accessDetails.active);
         setBusinessName(bInfo?.businessName || 'Meu Negócio');
         setResolvedBusinessId(bId);
       } else {
@@ -389,34 +393,60 @@ export default function HomePage() {
     );
   }
 
-  // 4. Negócio com assinatura/acesso inativo (active === false)
+  // 4. Negócio com assinatura/acesso inativo (active === false ou trial expirado)
   if (resolvedBusinessId && !isBusinessActive) {
+    const isTrialExpired = businessAccess?.isTrialExpired;
+
     return (
       <div className="min-h-screen bg-amber-50/60 flex flex-col items-center justify-center p-4 select-none">
         <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-sm border border-amber-200 text-center">
-          <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3 text-amber-800">
-            <AlertCircle className="w-6 h-6 text-amber-700" />
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3 ${
+            isTrialExpired ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'
+          }`}>
+            {isTrialExpired ? (
+              <Clock className="w-6 h-6 text-red-600" />
+            ) : (
+              <AlertCircle className="w-6 h-6 text-amber-700" />
+            )}
           </div>
-          <h2 className="text-lg font-bold text-neutral-900">Acesso Aguardando Liberação</h2>
+
+          <h2 className="text-lg font-bold text-neutral-900">
+            {isTrialExpired ? 'Período de Teste Expirado' : 'Acesso Aguardando Liberação'}
+          </h2>
           <p className="text-sm text-neutral-700 mt-2">
-            Seu acesso está temporariamente indisponível. Entre em contato com o suporte para verificar a liberação.
+            {isTrialExpired
+              ? 'Seu período de teste de 14 dias terminou. Para continuar utilizando o sistema e manter todos os seus dados e vendas seguros, entre em contato para ativar seu acesso definitivo.'
+              : 'Seu acesso está temporariamente indisponível. Entre em contato com o suporte para verificar a liberação.'}
           </p>
 
           <a
-            href="https://wa.me/5522988542784?text=Ol%C3%A1%2C%20preciso%20de%20ajuda%20com%20o%20acesso%20do%20meu%20neg%C3%B3cio%20no%20PDV%20Express."
+            href={
+              isTrialExpired
+                ? `https://wa.me/5522988542784?text=${encodeURIComponent(
+                    `Olá! Meu período de teste no PDV Express expirou no negócio "${businessName}" e gostaria de ativar o acesso definitivo.`
+                  )}`
+                : 'https://wa.me/5522988542784?text=Ol%C3%A1%2C%20preciso%20de%20ajuda%20com%20o%20acesso%20do%20meu%20neg%C3%B3cio%20no%20PDV%20Express.'
+            }
             target="_blank"
             rel="noopener noreferrer"
             id="btn-whatsapp-support-inactive"
-            className="mt-4 w-full min-h-[44px] px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm"
+            className={`mt-4 w-full min-h-[44px] px-3 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm text-white ${
+              isTrialExpired ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-emerald-600 hover:bg-emerald-700'
+            } active:scale-[0.99]`}
           >
             <MessageCircle className="w-4 h-4" />
-            <span>Falar no WhatsApp</span>
+            <span>{isTrialExpired ? 'Liberar Acesso Permanente no WhatsApp' : 'Falar no WhatsApp'}</span>
           </a>
 
-          <div className="mt-4 p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-xs text-neutral-600 break-all text-left">
+          <div className="mt-4 p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-xs text-neutral-600 break-all text-left space-y-1">
             <div><strong className="text-neutral-800">Negócio:</strong> {businessName}</div>
-            <div className="mt-1"><strong className="text-neutral-800">ID do Negócio:</strong> {resolvedBusinessId}</div>
-            <div className="mt-1"><strong className="text-neutral-800">Responsável:</strong> {currentUser.email}</div>
+            <div><strong className="text-neutral-800">ID do Negócio:</strong> {resolvedBusinessId}</div>
+            <div><strong className="text-neutral-800">Responsável:</strong> {currentUser.email}</div>
+            {isTrialExpired && (
+              <div className="text-red-600 font-semibold pt-1 border-t border-neutral-200">
+                ⚠️ Teste de 14 dias finalizado
+              </div>
+            )}
           </div>
 
           <div className="mt-5 flex flex-col gap-2.5">
@@ -426,8 +456,9 @@ export default function HomePage() {
               onClick={async () => {
                 setIsResolving(true);
                 try {
-                  const activeStatus = await getBusinessActiveStatus(resolvedBusinessId);
-                  setIsBusinessActive(activeStatus);
+                  const accessDetails = await getBusinessAccessDetails(resolvedBusinessId);
+                  setBusinessAccess(accessDetails);
+                  setIsBusinessActive(accessDetails.active);
                 } finally {
                   setIsResolving(false);
                 }

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User } from 'firebase/auth';
-import { collection, doc, getDocs, getDocsFromServer, updateDoc, onSnapshot, setDoc } from 'firebase/firestore';
+import { collection, doc, getDocs, getDocsFromServer, updateDoc, onSnapshot, setDoc, Timestamp, deleteField } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { Business } from '@/types';
 import { 
@@ -17,14 +17,18 @@ import {
   Lock, 
   Mail, 
   ArrowRight, 
-  Search,
-  Check,
-  Pencil,
-  Trash2,
-  X,
-  AlertTriangle
+  Search, 
+  Check, 
+  Pencil, 
+  Trash2, 
+  X, 
+  AlertTriangle,
+  Clock,
+  Bell,
+  Send,
+  Sparkles
 } from 'lucide-react';
-import { deleteBusinessCompletely } from '@/lib/db';
+import { deleteBusinessCompletely, createBusinessNotice } from '@/lib/db';
 
 export default function AdminPage() {
   const [currentUser, setCurrentUser] = useState<User | null | undefined>(undefined);
@@ -47,11 +51,42 @@ export default function AdminPage() {
   const [isDeletingBusiness, setIsDeletingBusiness] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // Estados para envio de aviso / comunicado
+  const [noticeBusiness, setNoticeBusiness] = useState<Business | null>(null);
+  const [noticeTitle, setNoticeTitle] = useState('');
+  const [noticeMessage, setNoticeMessage] = useState('');
+  const [noticeType, setNoticeType] = useState<'payment_reminder' | 'update' | 'general'>('payment_reminder');
+  const [isSendingNotice, setIsSendingNotice] = useState(false);
+  const [noticeError, setNoticeError] = useState<string | null>(null);
+
   // Login form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+
+  function getTrialInfo(trialEndsAt?: any) {
+    if (!trialEndsAt) return null;
+    let targetDate: Date | null = null;
+    if (typeof trialEndsAt.toDate === 'function') {
+      targetDate = trialEndsAt.toDate();
+    } else if (typeof trialEndsAt.seconds === 'number') {
+      targetDate = new Date(trialEndsAt.seconds * 1000);
+    } else if (typeof trialEndsAt === 'string') {
+      targetDate = new Date(trialEndsAt);
+    }
+    if (!targetDate || isNaN(targetDate.getTime())) return null;
+
+    const now = new Date();
+    const diffMs = targetDate.getTime() - now.getTime();
+    const isExpired = diffMs <= 0;
+    const daysLeft = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    return {
+      isExpired,
+      daysLeft,
+      targetDate,
+    };
+  }
 
   function parseDate(val: unknown): string {
     if (!val) return new Date().toISOString();
@@ -89,6 +124,7 @@ export default function AdminPage() {
           ownerUid: data.ownerUid,
           createdAt: parseDate(data.createdAt),
           active: data.active !== false,
+          trialEndsAt: data.trialEndsAt,
         };
       });
 
@@ -159,6 +195,7 @@ export default function AdminPage() {
                 ownerUid: data.ownerUid,
                 createdAt: parseDate(data.createdAt),
                 active: data.active !== false,
+                trialEndsAt: data.trialEndsAt,
               };
             });
 
@@ -222,16 +259,25 @@ export default function AdminPage() {
 
     try {
       const bRef = doc(db, 'businesses', business.id);
-      await updateDoc(bRef, {
+      const updateData: Record<string, any> = {
         active: newStatus,
-      });
+      };
+      if (newStatus && business.trialEndsAt) {
+        // Ativação permanente remove prazo de teste
+        updateData.trialEndsAt = deleteField();
+      }
+      await updateDoc(bRef, updateData);
 
       setBusinesses((prev) =>
-        prev.map((b) => (b.id === business.id ? { ...b, active: newStatus } : b))
+        prev.map((b) =>
+          b.id === business.id
+            ? { ...b, active: newStatus, trialEndsAt: newStatus ? undefined : b.trialEndsAt }
+            : b
+        )
       );
 
       setActionSuccessMessage(
-        `Negócio "${business.name}" foi ${newStatus ? 'ativado' : 'desativado'} com sucesso.`
+        `Negócio "${business.name}" foi ${newStatus ? 'ativado permanentemente' : 'desativado'} com sucesso.`
       );
       setTimeout(() => setActionSuccessMessage(null), 4000);
     } catch (err) {
@@ -239,6 +285,120 @@ export default function AdminPage() {
       alert('Falha ao atualizar o status. Verifique se você tem permissões de administrador.');
     } finally {
       setTogglingId(null);
+    }
+  };
+
+  // Liberar Teste (14 dias)
+  const handleGrantTrial = async (business: Business) => {
+    setTogglingId(business.id);
+    setActionSuccessMessage(null);
+    try {
+      const bRef = doc(db, 'businesses', business.id);
+      const trialTs = Timestamp.fromDate(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000));
+      await updateDoc(bRef, {
+        active: true,
+        trialEndsAt: trialTs,
+      });
+
+      setBusinesses((prev) =>
+        prev.map((b) => (b.id === business.id ? { ...b, active: true, trialEndsAt: trialTs } : b))
+      );
+
+      setActionSuccessMessage(
+        `Período de teste de 14 dias liberado para "${business.name}".`
+      );
+      setTimeout(() => setActionSuccessMessage(null), 4000);
+    } catch (err) {
+      console.error('Erro ao liberar teste de 14 dias:', err);
+      alert('Falha ao liberar período de teste. Verifique as permissões de administrador.');
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  // Converter Teste em Permanente
+  const handleConvertToPermanent = async (business: Business) => {
+    setTogglingId(business.id);
+    setActionSuccessMessage(null);
+    try {
+      const bRef = doc(db, 'businesses', business.id);
+      await updateDoc(bRef, {
+        active: true,
+        trialEndsAt: deleteField(),
+      });
+
+      setBusinesses((prev) =>
+        prev.map((b) => (b.id === business.id ? { ...b, active: true, trialEndsAt: undefined } : b))
+      );
+
+      setActionSuccessMessage(
+        `Negócio "${business.name}" convertido para acesso permanente com sucesso.`
+      );
+      setTimeout(() => setActionSuccessMessage(null), 4000);
+    } catch (err) {
+      console.error('Erro ao converter para permanente:', err);
+      alert('Falha ao converter negócio para acesso permanente.');
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  // Envio de Aviso / Lembrete
+  const handleOpenNotice = (business: Business, defaultType: 'payment_reminder' | 'update' | 'general' = 'payment_reminder') => {
+    setNoticeBusiness(business);
+    setNoticeError(null);
+    setNoticeType(defaultType);
+    if (defaultType === 'payment_reminder') {
+      setNoticeTitle('Lembrete de Pagamento');
+      setNoticeMessage('Sua data de pagamento está se aproximando. Entre em contato para regularizar.');
+    } else if (defaultType === 'update') {
+      setNoticeTitle('Novidades no Sistema');
+      setNoticeMessage('Novas melhorias e atualizações foram disponibilizadas no seu app.');
+    } else {
+      setNoticeTitle('');
+      setNoticeMessage('');
+    }
+  };
+
+  const handleSetQuickNotice = (type: 'payment_reminder' | 'update' | 'general') => {
+    setNoticeType(type);
+    if (type === 'payment_reminder') {
+      setNoticeTitle('Lembrete de Pagamento');
+      setNoticeMessage('Sua data de pagamento está se aproximando. Entre em contato para regularizar.');
+    } else if (type === 'update') {
+      setNoticeTitle('Novidades no Sistema');
+      setNoticeMessage('Novas melhorias e atualizações foram disponibilizadas no seu app.');
+    } else {
+      setNoticeTitle('');
+      setNoticeMessage('');
+    }
+  };
+
+  const handleSendNoticeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!noticeBusiness) return;
+    if (!noticeTitle.trim() || !noticeMessage.trim()) {
+      setNoticeError('Por favor, preencha o título e a mensagem do aviso.');
+      return;
+    }
+
+    setIsSendingNotice(true);
+    setNoticeError(null);
+    try {
+      await createBusinessNotice(noticeBusiness.id, {
+        title: noticeTitle.trim(),
+        message: noticeMessage.trim(),
+        type: noticeType,
+      });
+
+      setActionSuccessMessage(`Aviso enviado com sucesso para "${noticeBusiness.name}".`);
+      setNoticeBusiness(null);
+      setTimeout(() => setActionSuccessMessage(null), 4000);
+    } catch (err) {
+      console.error('Erro ao enviar aviso:', err);
+      setNoticeError('Falha ao enviar aviso. Verifique as permissões de administrador.');
+    } finally {
+      setIsSendingNotice(false);
     }
   };
 
@@ -584,6 +744,7 @@ export default function AdminPage() {
                   {filteredBusinesses.map((b) => {
                     const isActive = b.active !== false;
                     const isToggling = togglingId === b.id;
+                    const trialInfo = getTrialInfo(b.trialEndsAt);
 
                     const formattedDate = b.createdAt
                       ? new Intl.DateTimeFormat('pt-BR', {
@@ -595,7 +756,22 @@ export default function AdminPage() {
                     return (
                       <tr key={b.id} className="hover:bg-neutral-800/40 transition">
                         <td className="py-3.5 px-4">
-                          <div className="font-bold text-neutral-100 text-sm">{b.name}</div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-neutral-100 text-sm">{b.name}</span>
+                            {trialInfo && (
+                              trialInfo.isExpired ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-950/80 text-red-300 border border-red-700/80">
+                                  <Clock className="w-2.5 h-2.5 text-red-400" />
+                                  Teste expirado
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 text-amber-300 border border-amber-700/80">
+                                  <Clock className="w-2.5 h-2.5 text-amber-400" />
+                                  Teste — expira em {trialInfo.daysLeft} {trialInfo.daysLeft === 1 ? 'dia' : 'dias'}
+                                </span>
+                              )
+                            )}
+                          </div>
                           <div className="text-[10px] text-neutral-500 font-mono mt-0.5">
                             ID: {b.id}
                           </div>
@@ -624,7 +800,7 @@ export default function AdminPage() {
                           )}
                         </td>
                         <td className="py-3.5 px-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
                             {/* 1) Editar Nome */}
                             <button
                               type="button"
@@ -637,29 +813,84 @@ export default function AdminPage() {
                               <span>Editar Nome</span>
                             </button>
 
-                            {/* Ativar / Desativar */}
+                            {/* 2) Enviar Aviso */}
                             <button
                               type="button"
-                              id={`btn-toggle-status-${b.id}`}
-                              onClick={() => handleToggleStatus(b)}
-                              disabled={isToggling}
-                              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition border ${
-                                isActive
-                                  ? 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border-amber-800/60'
-                                  : 'bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border-emerald-800/60'
-                              } disabled:opacity-50`}
+                              id={`btn-notice-${b.id}`}
+                              onClick={() => handleOpenNotice(b)}
+                              title="Enviar aviso ou lembrete para o negócio"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition border bg-blue-950/50 hover:bg-blue-900/70 text-blue-300 border-blue-800/70"
                             >
-                              {isToggling ? (
-                                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                              ) : (
-                                <Power className="w-3.5 h-3.5" />
-                              )}
-                              <span>{isActive ? 'Desativar' : 'Ativar'}</span>
+                              <Bell className="w-3.5 h-3.5 text-blue-400" />
+                              <span>Enviar Aviso</span>
                             </button>
+
+                            {/* Status & Teste buttons */}
+                            {isActive ? (
+                              <>
+                                {b.trialEndsAt && (
+                                  <button
+                                    type="button"
+                                    id={`btn-convert-perm-${b.id}`}
+                                    onClick={() => handleConvertToPermanent(b)}
+                                    disabled={isToggling}
+                                    title="Converter em acesso permanente"
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition border bg-indigo-950/50 hover:bg-indigo-900/70 text-indigo-300 border-indigo-800/70 disabled:opacity-50"
+                                  >
+                                    <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+                                    <span>Converter em Permanente</span>
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  id={`btn-toggle-status-${b.id}`}
+                                  onClick={() => handleToggleStatus(b)}
+                                  disabled={isToggling}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition border bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border-amber-800/60 disabled:opacity-50"
+                                >
+                                  {isToggling ? (
+                                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                  ) : (
+                                    <Power className="w-3.5 h-3.5" />
+                                  )}
+                                  <span>Desativar</span>
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  id={`btn-grant-trial-${b.id}`}
+                                  onClick={() => handleGrantTrial(b)}
+                                  disabled={isToggling}
+                                  title="Liberar acesso de teste de 14 dias"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition border bg-amber-950/50 hover:bg-amber-900/70 text-amber-300 border-amber-800/70 disabled:opacity-50"
+                                >
+                                  <Clock className="w-3.5 h-3.5 text-amber-400" />
+                                  <span>Liberar Teste (14 dias)</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  id={`btn-toggle-status-${b.id}`}
+                                  onClick={() => handleToggleStatus(b)}
+                                  disabled={isToggling}
+                                  title="Ativar acesso permanente"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition border bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border-emerald-800/60 disabled:opacity-50"
+                                >
+                                  {isToggling ? (
+                                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                  ) : (
+                                    <Power className="w-3.5 h-3.5" />
+                                  )}
+                                  <span>Ativar Permanente</span>
+                                </button>
+                              </>
+                            )}
 
                             <span className="w-px h-4 bg-neutral-800" />
 
-                            {/* 2) Excluir Conta (Permanente) */}
+                            {/* Excluir Conta */}
                             <button
                               type="button"
                               id={`btn-delete-business-${b.id}`}
@@ -684,6 +915,7 @@ export default function AdminPage() {
               {filteredBusinesses.map((b) => {
                 const isActive = b.active !== false;
                 const isToggling = togglingId === b.id;
+                const trialInfo = getTrialInfo(b.trialEndsAt);
 
                 const formattedDate = b.createdAt
                   ? new Intl.DateTimeFormat('pt-BR', {
@@ -696,7 +928,22 @@ export default function AdminPage() {
                   <div key={b.id} className="p-4 space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <div className="font-bold text-white text-sm">{b.name}</div>
+                        <div className="font-bold text-white text-sm flex items-center gap-1.5 flex-wrap">
+                          <span>{b.name}</span>
+                          {trialInfo && (
+                            trialInfo.isExpired ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-red-950/80 text-red-300 border border-red-700/80">
+                                <Clock className="w-2 h-2 text-red-400" />
+                                Teste expirado
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-950/80 text-amber-300 border border-amber-700/80">
+                                <Clock className="w-2 h-2 text-amber-400" />
+                                Teste — expira em {trialInfo.daysLeft}d
+                              </span>
+                            )
+                          )}
+                        </div>
                         <div className="text-[10px] text-neutral-500 font-mono">
                           ID: {b.id}
                         </div>
@@ -742,23 +989,73 @@ export default function AdminPage() {
 
                         <button
                           type="button"
-                          id={`btn-mobile-toggle-${b.id}`}
-                          onClick={() => handleToggleStatus(b)}
-                          disabled={isToggling}
-                          className={`min-h-[38px] flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
-                            isActive
-                              ? 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border-amber-800/60'
-                              : 'bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border-emerald-800/60'
-                          } disabled:opacity-50`}
+                          id={`btn-mobile-notice-${b.id}`}
+                          onClick={() => handleOpenNotice(b)}
+                          className="min-h-[38px] flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition border bg-blue-950/50 hover:bg-blue-900/70 text-blue-300 border-blue-800/70"
                         >
-                          {isToggling ? (
-                            <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          ) : (
-                            <Power className="w-3.5 h-3.5" />
-                          )}
-                          <span>{isActive ? 'Desativar' : 'Ativar'}</span>
+                          <Bell className="w-3.5 h-3.5 text-blue-400" />
+                          <span>Enviar Aviso</span>
                         </button>
                       </div>
+
+                      {isActive ? (
+                        <div className="flex flex-col gap-2">
+                          {b.trialEndsAt && (
+                            <button
+                              type="button"
+                              id={`btn-mobile-convert-perm-${b.id}`}
+                              onClick={() => handleConvertToPermanent(b)}
+                              disabled={isToggling}
+                              className="min-h-[38px] flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition border bg-indigo-950/50 hover:bg-indigo-900/70 text-indigo-300 border-indigo-800/70 disabled:opacity-50"
+                            >
+                              <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+                              <span>Converter em Permanente</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            id={`btn-mobile-toggle-${b.id}`}
+                            onClick={() => handleToggleStatus(b)}
+                            disabled={isToggling}
+                            className="min-h-[38px] flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition border bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border-amber-800/60 disabled:opacity-50"
+                          >
+                            {isToggling ? (
+                              <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : (
+                              <Power className="w-3.5 h-3.5" />
+                            )}
+                            <span>Desativar</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            id={`btn-mobile-grant-trial-${b.id}`}
+                            onClick={() => handleGrantTrial(b)}
+                            disabled={isToggling}
+                            className="min-h-[38px] flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold transition border bg-amber-950/50 hover:bg-amber-900/70 text-amber-300 border-amber-800/70 disabled:opacity-50"
+                          >
+                            <Clock className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Teste (14d)</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            id={`btn-mobile-toggle-${b.id}`}
+                            onClick={() => handleToggleStatus(b)}
+                            disabled={isToggling}
+                            className="min-h-[38px] flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold transition border bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border-emerald-800/60 disabled:opacity-50"
+                          >
+                            {isToggling ? (
+                              <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : (
+                              <Power className="w-3.5 h-3.5" />
+                            )}
+                            <span>Ativar Perm.</span>
+                          </button>
+                        </div>
+                      )}
 
                       <button
                         type="button"
@@ -960,6 +1257,158 @@ export default function AdminPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Enviar Aviso / Lembrete */}
+      {noticeBusiness && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border border-neutral-800 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-neutral-850 px-5 py-4 border-b border-neutral-800 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-white">
+                <Bell className="w-4 h-4 text-blue-400" />
+                <h3 className="text-sm font-bold">Enviar Aviso para o Negócio</h3>
+              </div>
+              <button
+                type="button"
+                id="btn-close-notice-modal"
+                onClick={() => setNoticeBusiness(null)}
+                disabled={isSendingNotice}
+                className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSendNoticeSubmit} className="p-5 space-y-4">
+              {noticeError && (
+                <div className="p-2.5 bg-red-950/60 border border-red-800/80 rounded-xl text-red-200 text-xs font-semibold flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                  <span>{noticeError}</span>
+                </div>
+              )}
+
+              {/* Informações do Destinatário */}
+              <div className="bg-neutral-950 p-3 rounded-xl border border-neutral-800 text-xs space-y-1">
+                <div>
+                  <span className="text-neutral-500 font-medium">Destinatário: </span>
+                  <strong className="text-white font-bold">{noticeBusiness.name}</strong>
+                </div>
+                <div>
+                  <span className="text-neutral-500 font-medium">E-mail: </span>
+                  <span className="font-mono text-neutral-400">{noticeBusiness.ownerEmail || 'Não informado'}</span>
+                </div>
+              </div>
+
+              {/* Modelos Rápidos */}
+              <div>
+                <label className="block text-xs font-semibold text-neutral-300 mb-1.5">
+                  Modelo Rápido de Aviso
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    id="btn-template-payment"
+                    onClick={() => handleSetQuickNotice('payment_reminder')}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition text-center ${
+                      noticeType === 'payment_reminder'
+                        ? 'bg-blue-950 text-blue-300 border-blue-600'
+                        : 'bg-neutral-950 text-neutral-400 border-neutral-800 hover:bg-neutral-800'
+                    }`}
+                  >
+                    Lembrete Pagamento
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-template-update"
+                    onClick={() => handleSetQuickNotice('update')}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition text-center ${
+                      noticeType === 'update'
+                        ? 'bg-blue-950 text-blue-300 border-blue-600'
+                        : 'bg-neutral-950 text-neutral-400 border-neutral-800 hover:bg-neutral-800'
+                    }`}
+                  >
+                    Atualização
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-template-general"
+                    onClick={() => handleSetQuickNotice('general')}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition text-center ${
+                      noticeType === 'general'
+                        ? 'bg-blue-950 text-blue-300 border-blue-600'
+                        : 'bg-neutral-950 text-neutral-400 border-neutral-800 hover:bg-neutral-800'
+                    }`}
+                  >
+                    Personalizado
+                  </button>
+                </div>
+              </div>
+
+              {/* Título do Aviso */}
+              <div>
+                <label className="block text-xs font-semibold text-neutral-300 mb-1" htmlFor="input-notice-title">
+                  Título do Aviso
+                </label>
+                <input
+                  id="input-notice-title"
+                  type="text"
+                  value={noticeTitle}
+                  onChange={(e) => setNoticeTitle(e.target.value)}
+                  placeholder="Ex: Lembrete de Pagamento, Novidades no Sistema..."
+                  disabled={isSendingNotice}
+                  className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-xl text-xs text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                />
+              </div>
+
+              {/* Mensagem do Aviso */}
+              <div>
+                <label className="block text-xs font-semibold text-neutral-300 mb-1" htmlFor="input-notice-message">
+                  Mensagem do Aviso
+                </label>
+                <textarea
+                  id="input-notice-message"
+                  value={noticeMessage}
+                  onChange={(e) => setNoticeMessage(e.target.value)}
+                  rows={4}
+                  placeholder="Digite o texto detalhado do aviso que será exibido no app do negócio..."
+                  disabled={isSendingNotice}
+                  className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-xl text-xs text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium resize-none"
+                />
+              </div>
+
+              {/* Botões de Ação */}
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  id="btn-cancel-send-notice"
+                  onClick={() => setNoticeBusiness(null)}
+                  disabled={isSendingNotice}
+                  className="px-3 py-2 rounded-xl border border-neutral-700 hover:bg-neutral-800 text-neutral-300 text-xs font-bold transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  id="btn-submit-send-notice"
+                  disabled={isSendingNotice || !noticeTitle.trim() || !noticeMessage.trim()}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow transition disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {isSendingNotice ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Enviando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Enviar Aviso</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

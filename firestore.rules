@@ -124,6 +124,17 @@ service cloud.firestore {
       match /priceTables/{priceTableId} {
         allow read, write: if isPlatformAdmin() || isOwnerOfBusiness(businessId);
       }
+
+      // 5.7 Subcoleção: notices (Avisos e comunicados do administrador)
+      match /notices/{noticeId} {
+        allow read: if isPlatformAdmin() || isOwnerOfBusiness(businessId);
+        allow create: if isPlatformAdmin();
+        allow update: if isPlatformAdmin() || (
+          isOwnerOfBusiness(businessId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
+        );
+        allow delete: if isPlatformAdmin();
+      }
     }
 
     // 6. Coleção Raiz: publicCatalog (Catálogo Virtual Público - Vitrine de Produtos)

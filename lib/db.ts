@@ -19,7 +19,7 @@ import {
   runTransaction,
 } from 'firebase/firestore';
 import { db, DEFAULT_BUSINESS_ID, ensureAuthSession } from './firebase';
-import { Customer, Product, Sale, Payment, Seller, Business, PriceTable, PaymentMethod, PublicCatalogItem } from '@/types';
+import { Customer, Product, Sale, Payment, Seller, Business, PriceTable, PaymentMethod, PublicCatalogItem, BusinessNotice } from '@/types';
 import { hashPin, generateSalt } from './security';
 
 export { DEFAULT_BUSINESS_ID };
@@ -1428,5 +1428,88 @@ export async function updatePriceTable(
   const docRef = doc(getPriceTablesCol(businessId), priceTableId);
   await updateDoc(docRef, cleanUndefined(updates));
 }
+
+// ==========================================
+// NOTICES (Avisos e Lembretes do Admin)
+// ==========================================
+
+export function getNoticesCol(businessId = DEFAULT_BUSINESS_ID) {
+  return collection(db, 'businesses', businessId, 'notices');
+}
+
+export function subscribeBusinessNotices(
+  businessId = DEFAULT_BUSINESS_ID,
+  callback: (notices: BusinessNotice[]) => void
+): () => void {
+  if (!businessId) {
+    callback([]);
+    return () => {};
+  }
+  const colRef = getNoticesCol(businessId);
+  return onSnapshot(
+    colRef,
+    (snap) => {
+      const list: BusinessNotice[] = snap.docs.map((docSnap) => {
+        const data = docSnap.data();
+        let createdAtStr = new Date().toISOString();
+        if (typeof data.createdAt === 'string') {
+          createdAtStr = data.createdAt;
+        } else if (data.createdAt && typeof data.createdAt.toDate === 'function') {
+          createdAtStr = data.createdAt.toDate().toISOString();
+        }
+        return {
+          id: docSnap.id,
+          title: sanitizeString(data.title, 'Aviso'),
+          message: sanitizeString(data.message, ''),
+          type: (data.type === 'payment_reminder' || data.type === 'update' || data.type === 'general')
+            ? data.type
+            : 'general',
+          createdAt: createdAtStr,
+          read: data.read === true,
+        };
+      });
+      // Mais recente primeiro
+      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      callback(list);
+    },
+    (err) => {
+      console.warn('Erro ao escutar avisos do negócio:', err);
+      callback([]);
+    }
+  );
+}
+
+export async function createBusinessNotice(
+  businessId: string,
+  notice: {
+    title: string;
+    message: string;
+    type?: 'payment_reminder' | 'update' | 'general';
+  }
+): Promise<string> {
+  const colRef = getNoticesCol(businessId);
+  const docRef = await addDoc(
+    colRef,
+    cleanUndefined({
+      title: notice.title.trim(),
+      message: notice.message.trim(),
+      type: notice.type || 'general',
+      createdAt: new Date().toISOString(),
+      read: false,
+    })
+  );
+  return docRef.id;
+}
+
+export async function markNoticeAsRead(
+  businessId: string,
+  noticeId: string
+): Promise<void> {
+  const docRef = doc(getNoticesCol(businessId), noticeId);
+  await updateDoc(docRef, {
+    read: true,
+  });
+}
+
 
 
