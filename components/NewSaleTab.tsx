@@ -336,11 +336,11 @@ export function NewSaleTab({ customers, products, priceTables = [], onSaleComple
   // Filtered customers for search
   const filteredCustomers = activeCustomers.filter((c) => {
     if (!customerSearch.trim()) return true;
-    const term = customerSearch.toLowerCase();
+    const term = normalizeStr(customerSearch);
     return (
-      c.name.toLowerCase().includes(term) ||
-      (c.address && c.address.toLowerCase().includes(term)) ||
-      (c.referencePoint && c.referencePoint.toLowerCase().includes(term))
+      normalizeStr(c.name).includes(term) ||
+      (c.address && normalizeStr(c.address).includes(term)) ||
+      (c.referencePoint && normalizeStr(c.referencePoint).includes(term))
     );
   });
 
